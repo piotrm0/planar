@@ -19,13 +19,17 @@ executable planar
   main-is:             Planar.hs
   -- other-modules:       
   -- other-extensions:    
-  build-depends:       base >=4.8,
-                       sdl2 >= 2.0.0,
+  build-depends:       base,
+                       sdl2,
                        linear,
-                       mtl >= 2.2.1,
-                       transformers >= 0.4.2.0,
-                       text >= 1.2.0.4,
+                       mtl,
+                       transformers,
+                       text,
                        vector,
-                       primitive
+                       primitive,
+                       array,
+                       monad-loops,
+                       OpenGL
+                       
   -- hs-source-dirs:      
   default-language:    Haskell2010

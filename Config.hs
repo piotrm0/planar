@@ -16,9 +16,11 @@ import Data.Text
 
 data Config = Config {
       window_title :: Text
-    , window_size :: V2 CInt 
+    , window_size :: V2 CInt
+    , opengl :: SDL.OpenGLConfig
     }
 
 config :: Config
 config = Config {window_title = "planar"
-                ,window_size = V2 800 600}
+                ,window_size = V2 800 600
+                ,opengl = SDL.defaultOpenGL {glProfile = Compatibility Normal 3 2}}
