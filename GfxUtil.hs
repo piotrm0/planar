@@ -60,8 +60,8 @@ frame_timer_get_fps = fps
 frame_timer_new :: MonadIO m => Float -> m FrameTimer
 frame_timer_new fps = do
   tdt <- counter_of_seconds (1 / fps)
-  avgdt <- avgwindow_new 60
-  avgdts <- avgwindow_new 60
+  avgdt <- avgwindow_new (truncate fps)
+  avgdts <- avgwindow_new (truncate fps)
   return $ FrameTimer {target_dt = tdt
                       ,avgwindow_dt = avgdt
                       ,avgwindow_dts = avgdts

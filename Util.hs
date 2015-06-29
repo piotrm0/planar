@@ -62,3 +62,10 @@ avgwindow_print :: (Show a, Num a, MonadIO m) => AvgWindow a -> m ()
 avgwindow_print w@(AvgWindow avg window) = do
   liftIO $ putStrLn $ "avgwindow: " ++ "avg = " ++ (show avg)
   sumwindow_print window
+
+forM_flat :: Monad m => [a] -> (a -> m [b]) -> m [b]
+forM_flat items f = do
+  foldM (\accum item -> do
+             more_items <- f item
+             return $ accum ++ more_items) [] items
+  

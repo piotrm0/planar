@@ -1,6 +1,8 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE KindSignatures #-}
 
 module Gfx where
 
@@ -23,30 +25,24 @@ import Data.Int
 import qualified Graphics.Rendering.OpenGL as GL
 import qualified SDL.Raw.Timer as Raw
 import qualified Config
+import Lens
 import Util
 import GfxUtil
+
+type AllState cs m = (cs, GfxState cs m)
 
 data MonadIO m => GfxState cs m = GfxState {
   window :: SDL.Window
   ,renderer :: SDL.Renderer
-  ,key_handler :: SDL.Keycode -> StateT (cs, GfxState cs m) m ()
-  ,draw_handler :: Float -> StateT (cs, GfxState cs m) m ()
+  ,key_handler :: SDL.Keycode -> StateT (AllState cs m) m ()
+  ,draw_handler :: Float -> StateT (AllState cs m) m ()
   ,framer :: FrameTimer
   ,glcontext :: SDL.GLContext
   }
 
-with_field :: (MonadIO m) => (GfxState cs m -> b)
-              -> (b -> GfxState cs m -> GfxState cs m)
-              -> StateT b m a -> StateT (GfxState cs m) m a
-with_field get_field set_field ftcomp = do
-  s <- get
-  (out , next_value) <- lift (runStateT ftcomp $ get_field s)
-  put $ set_field next_value s
-  return out
+make_lenses_tuple "allstate" ("client", "gfx")
+make_lenses_record "gfx" ''Gfx.GfxState
 
-with_framer :: (MonadIO m) => StateT FrameTimer m a -> StateT (GfxState cs m) m a
-with_framer = with_field framer $ \n s -> s {framer = n}
-                
 init :: (MonadIO m, Functor m) => cs -> m (cs, GfxState cs m)
 init client_state = do
   SDL.initialize [SDL.InitVideo]
@@ -79,7 +75,7 @@ init client_state = do
                                  ,glcontext = gl
                                  })
 
-finish :: MonadIO m => StateT (cs, GfxState cs m) m ()
+finish :: MonadIO m => StateT (AllState cs m) m ()
 finish = do
   (client_state, gfx_state) <- get
   liftIO $ do
@@ -88,7 +84,7 @@ finish = do
     SDL.quit
   return ()
 
-loop :: (Functor m, MonadIO m) => StateT (cs, GfxState cs m) m ()
+loop :: (Functor m, MonadIO m) => StateT (AllState cs m) m ()
 loop = do
   (client_state, gfx_state) <- get
 
@@ -102,7 +98,7 @@ loop = do
   iterateUntil id $ do
     
     gfx_state <- gets snd
-    (next, new_gfx_state) <- lift $ runStateT (with_framer frame_timer_next) gfx_state
+    (next, new_gfx_state) <- lift $ runStateT ((with_lens gfx_framer) frame_timer_next) gfx_state
     put (client_state, new_gfx_state)
 
     case next of
@@ -133,12 +129,12 @@ collect_events = do
     Nothing -> return []
     Just ev -> fmap (ev :) collect_events
 
-process_events :: (Functor m, MonadIO m) => StateT (cs, GfxState cs m) m Bool
+process_events :: (Functor m, MonadIO m) => StateT (AllState cs m) m Bool
 process_events = do
   events <- collect_events
   anyM process_event events
 
-process_event :: MonadIO m => SDL.Event -> StateT (cs, GfxState cs m) m Bool
+process_event :: MonadIO m => SDL.Event -> StateT (AllState cs m) m Bool
 process_event ev = do
   (client_state, gfx_state) <- get
   case SDL.eventPayload ev of
@@ -150,7 +146,7 @@ process_event ev = do
       --(SDL.MouseButtonEvent _ SDL.MouseButtonDown _ _ _ _ _) -> True
     _ -> return False
 
-process_events_wait :: (MonadIO m, Functor m) => Float -> StateT (cs, GfxState cs m) m Bool
+process_events_wait :: (MonadIO m, Functor m) => Float -> StateT (AllState cs m) m Bool
 process_events_wait t = do
   events <- collect_events_timeout t
   anyM process_event events
