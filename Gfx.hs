@@ -15,7 +15,7 @@ import Control.Monad
 import Control.Monad.Loops
 import Control.Monad.Primitive
 import Control.Monad.IO.Class
-import Control.Monad.State.Lazy
+import Control.Monad.State.Strict
 import Data.Functor.Identity
 import Foreign.C.Types
 import Data.Word
@@ -65,7 +65,7 @@ init client_state = do
   SDL.glMakeCurrent window gl
   SDL.glSetSwapInterval SDL.ImmediateUpdates
 
-  framer <- frame_timer_new 60
+  framer <- frame_timer_new 10
 
   return (client_state, GfxState {window = window
                                  ,renderer = renderer

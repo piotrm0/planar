@@ -8,7 +8,7 @@ import Linear
 import Linear.Affine ( Point(P) )
 import Control.Monad
 import Control.Monad.Primitive
-import Control.Monad.State.Lazy
+import Control.Monad.State.Strict
 import Data.Word
 import Util
 

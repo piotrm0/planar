@@ -5,7 +5,7 @@ module Lens where
 
 import Control.Monad
 import Control.Monad.IO.Class
-import Control.Monad.State.Lazy
+import Control.Monad.State.Strict
 import Language.Haskell.TH
 import Util
 
