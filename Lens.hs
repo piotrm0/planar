@@ -3,6 +3,7 @@
 
 module Lens where
 
+import Control.Category
 import Control.Monad
 import Control.Monad.IO.Class
 import Control.Monad.State.Strict
@@ -23,6 +24,17 @@ type Putter intype fieldtype = intype -> fieldtype -> intype
 data Lens intype fieldtype = Lens {getter :: Getter intype fieldtype
                                   ,putter :: Putter intype fieldtype}
 
+compose_lenses :: Lens b c -> Lens a b -> Lens a c
+compose_lenses lens_bc lens_ab
+  = Lens {getter = \ cont_a -> getter lens_bc $ getter lens_ab $ cont_a
+         ,putter = \ cont_a val_c -> (putter lens_ab) cont_a $ (putter lens_bc) ((getter lens_ab) cont_a) val_c
+         }
+
+instance Category Lens where
+  id = Lens {getter = \ x -> x,
+             putter = \ _ x -> x}
+  (.) = compose_lenses 
+
 with_lens :: forall intype fieldtype rettype m
              . (MonadIO m)
              => Lens intype fieldtype
@@ -33,6 +45,9 @@ with_lens l field_comp = do
   (out, next_val) <- lift (runStateT field_comp fieldval)
   put $ (putter l) inval next_val
   return out
+
+put_lens l field_val =
+  with_lens l $ put field_val
 
 make_with :: String -> Name -> Q [Dec]
 make_with field_name lens = do
@@ -100,8 +115,6 @@ make_lenses_record prefix rec_type_name = do
                 (VarP lens_name)
                 (NormalB (RecConE (mkName "Lens") [(mkName "getter", getter_body)
                                                   ,(mkName "putter", putter_body)])) []]
-
-    
 
 print_type t = do
   tv <- t

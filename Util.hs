@@ -15,6 +15,10 @@ import Data.Array.IO
 import Data.Ratio
 import Data.Monoid
 
+---
+--- Windows
+---
+
 class (Monad m)
       => FixedWindow container m ele ret | container -> ele, container -> ret where
   create_fixed :: Int -> m container
@@ -81,46 +85,79 @@ instance (MonadIO monad
     AvgWindow ret _ <- get
     return ret
 
-instance (Monad m, Monoid e) => MonoidWindow e m e e where
-  create_monoid = do
-    return mempty
-  push_monoid ele = do
-    old <- get
-    put $ mappend old ele
-  query_monoid = get
+--class MonoidModule c a where
+--  monoid_mempty :: c -> a
+--  monoid_mappend :: c -> a -> a -> a
 
-class (Monad m, Monoid ele)
-      => MonoidWindow container m ele ret | container -> ele, container -> ret where
-  create_monoid :: m container
-  push_monoid :: ele -> StateT container m ()
-  query_monoid :: StateT container m ret
+class (Monad m) => BinaryWindow mc c m e | mc -> e, mc -> c, c -> mc where
+  create_binary :: mc -> m c
+  push_binary :: e -> StateT c m ()
+  query_binary :: StateT c m e
 
---instance (Bounded e, Ord e) => Monoid e where
---  mempty = minBound
---  mappend = max
---instance (Bounded e, Ord e) => Monoid e where
---  mempty = maxBound
---  mappend = min
+type MonoidWindow e = (MonoidModule e, e)
 
-class (Monad m, Monoid ele)
-      => MaxWindow container m ele ret | container -> ele, container -> ret where
-  create_max :: m container
-  push_max :: ele -> StateT container m ()
-  query_max :: StateT container m ele
-class (Monad m, Monoid ele)
-      => MinWindow container m ele ret | container -> ele, container -> ret where
-  create_min :: m container
-  push_min :: ele -> StateT container m ()
-  query_min :: StateT container m ret
+data MonoidModule a =
+  MonoidModule {monoid_mempty :: a
+               ,monoid_mappend :: a -> a -> a}
+monoid_max :: (Ord e, Bounded e) => MonoidModule e
+monoid_max = MonoidModule {monoid_mempty = minBound
+                          ,monoid_mappend = max}
+monoid_min :: (Ord e, Bounded e) => MonoidModule e
+monoid_min = MonoidModule {monoid_mempty = maxBound
+                          ,monoid_mappend = min}
+instance (MonadIO m, Ord e, Bounded e)
+         => BinaryWindow (MonoidModule e) (MonoidModule e, e) m e where
+  create_binary mc =
+    return (mc, monoid_mempty mc)
+  push_binary e2 = do
+    (mc, e1) <- get
+    put $ (mc, (monoid_mappend mc) e1 e2)
+  query_binary = gets snd
 
-instance (Functor m, Monad m, Monoid e, Ord e, Bounded e) => MaxWindow e m e e where
-  create_max = return minBound
-  push_max e2 = (fmap (max e2) $ get) >>= put
-  query_max = get
-instance (Functor m, Monad m, Monoid e, Ord e, Bounded e) => MinWindow e m e e where
-  create_min = return maxBound
-  push_min e2 = (fmap (min e2) $ get) >>= put
-  query_min = get
+--instance (Monad m, Monoid e) => MonoidWindow e m e e where
+--  create_monoid = do
+--    return mempty
+--  push_monoid ele = do
+--    old <- get
+--    put $ mappend old ele
+--  query_monoid = get
+--
+--class (Monad m, Monoid ele)
+--      => MonoidWindow container m ele ret | container -> ele, container -> ret where
+--  create_monoid :: m container
+--  push_monoid :: ele -> StateT container m ()
+--  query_monoid :: StateT container m ret
+--
+----instance (Bounded e, Ord e) => Monoid e where
+----  mempty = minBound
+----  mappend = max
+----instance (Bounded e, Ord e) => Monoid e where
+----  mempty = maxBound
+----  mappend = min
+--
+--class (Monad m, Monoid ele)
+--      => MaxWindow container m ele ret | container -> ele, container -> ret where
+--  create_max :: m container
+--  push_max :: ele -> StateT container m ()
+--  query_max :: StateT container m ele
+--class (Monad m, Monoid ele)
+--      => MinWindow container m ele ret | container -> ele, container -> ret where
+--  create_min :: m container
+--  push_min :: ele -> StateT container m ()
+--  query_min :: StateT container m ret
+--
+--instance (Functor m, Monad m, Monoid e, Ord e, Bounded e) => MaxWindow e m e e where
+--  create_max = return minBound
+--  push_max e2 = (fmap (max e2) $ get) >>= put
+--  query_max = get
+--instance (Functor m, Monad m, Monoid e, Ord e, Bounded e) => MinWindow e m e e where
+--  create_min = return maxBound
+--  push_min e2 = (fmap (min e2) $ get) >>= put
+--  query_min = get
+
+--- 
+--- Lists
+---
 
 forM_flat :: Monad m => [a] -> (a -> m [b]) -> m [b]
 forM_flat items f = do

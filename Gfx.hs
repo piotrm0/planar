@@ -22,6 +22,9 @@ import Data.Word
 import Data.Bits
 import Data.Int
 
+import Prelude hiding ((.))
+import Control.Category
+
 import qualified Graphics.Rendering.OpenGL as GL
 import qualified SDL.Raw.Timer as Raw
 import qualified Config
@@ -65,7 +68,7 @@ init client_state = do
   SDL.glMakeCurrent window gl
   SDL.glSetSwapInterval SDL.ImmediateUpdates
 
-  framer <- frame_timer_new 10
+  framer <- frame_timer_new 60
 
   return (client_state, GfxState {window = window
                                  ,renderer = renderer
@@ -95,22 +98,34 @@ loop = do
   _ <- SDL.renderClear gfx_renderer
   _ <- SDL.renderPresent gfx_renderer
 
-  iterateUntil id $ do
-    
+  iterateUntil Prelude.id $ do
     gfx_state <- gets snd
-    (next, new_gfx_state) <- lift $ runStateT ((with_lens gfx_framer) frame_timer_next) gfx_state
-    put (client_state, new_gfx_state)
+    waittime <- with_lens (gfx_framer . allstate_gfx) $ frame_timer_wait
 
-    case next of
-      FrameMark dts -> do
-        gfx_draw_handler dts
-        SDL.glSwapWindow gfx_window
-        return False
+--    (next, new_gfx_state) <- lift $ runStateT ((with_lens gfx_framer) frame_timer_next) gfx_state
+--    put (client_state, new_gfx_state)
 
-      FrameWait t -> do
-        SDL.pumpEvents
-        process_events_wait t
+--    liftIO $ do
+--      putStrLn $ "waiting for: " ++ (show waittime)
 
+    SDL.delay (fromIntegral waittime)
+    dt <- with_lens (gfx_framer . allstate_gfx) $ frame_timer_mark
+    dts <- seconds_of_counter (fromIntegral dt)
+
+    gfx_draw_handler dts
+    SDL.glSwapWindow gfx_window
+
+    process_events
+
+--    case next of
+--      FrameMark dts -> do
+--        gfx_draw_handler dts
+--        SDL.glSwapWindow gfx_window
+--        process_events
+--
+--      FrameWait t -> do
+--        SDL.delay (fromIntegral (truncate (1000 * t)))
+--        return False
 
   gfx_state <- gets snd
   liftIO $ putStrLn $ "overall fps=" ++ (show (fps (framer gfx_state)))
