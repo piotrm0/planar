@@ -39,7 +39,7 @@ data MonadIO m => GfxState cs m = GfxState {
   ,renderer :: SDL.Renderer
   ,key_handler :: SDL.Keycode -> StateT (AllState cs m) m ()
   ,draw_handler :: Float -> StateT (AllState cs m) m ()
-  ,framer :: FrameTimer
+  ,frame_timer :: FrameTimer
   ,glcontext :: SDL.GLContext
   }
 
@@ -74,7 +74,7 @@ init client_state = do
                                  ,renderer = renderer
                                  ,key_handler = \ _ -> return ()
                                  ,draw_handler = \ _ -> return ()
-                                 ,framer = framer
+                                 ,frame_timer = framer
                                  ,glcontext = gl
                                  })
 
@@ -100,7 +100,7 @@ loop = do
 
   iterateUntil Prelude.id $ do
     gfx_state <- gets snd
-    waittime <- with_lens (gfx_framer . allstate_gfx) $ frame_timer_wait
+    waittime <- with_lens (frame_timer_in_gfx . gfx_in_allstate) $ frame_timer_wait
 
 --    (next, new_gfx_state) <- lift $ runStateT ((with_lens gfx_framer) frame_timer_next) gfx_state
 --    put (client_state, new_gfx_state)
@@ -109,7 +109,7 @@ loop = do
 --      putStrLn $ "waiting for: " ++ (show waittime)
 
     SDL.delay (fromIntegral waittime)
-    dt <- with_lens (gfx_framer . allstate_gfx) $ frame_timer_mark
+    dt <- with_lens (frame_timer_in_gfx . gfx_in_allstate) $ frame_timer_mark
     dts <- seconds_of_counter (fromIntegral dt)
 
     gfx_draw_handler dts
@@ -128,12 +128,12 @@ loop = do
 --        return False
 
   gfx_state <- gets snd
-  liftIO $ putStrLn $ "overall fps=" ++ (show (fps (framer gfx_state)))
+  liftIO $ putStrLn $ "overall fps=" ++ (show (fps (frame_timer gfx_state)))
   return ()
 
 collect_events_timeout :: (Functor m, MonadIO m) => Float -> m [SDL.Event]
 collect_events_timeout t = do
-  m_ev <- SDL.waitEventTimeout (fromIntegral (truncate (1000 * t)))
+  m_ev <- SDL.waitEventTimeout $ truncate (1000 * t)
   case m_ev of
     Nothing -> return []
     Just ev -> fmap (ev :) collect_events
@@ -165,3 +165,16 @@ process_events_wait :: (MonadIO m, Functor m) => Float -> StateT (AllState cs m)
 process_events_wait t = do
   events <- collect_events_timeout t
   anyM process_event events
+
+get_window_size :: MonadIO m => StateT (AllState cs m) m (V2 CInt)
+get_window_size =
+  with_lens (window_in_gfx . gfx_in_allstate) $ do
+    w <- get
+    ws <- liftIO $ SDL.getWindowSize w
+    return ws
+
+setup_viewport :: MonadIO m => StateT (AllState cs m) m ()
+setup_viewport = do
+  V2 width height <- get_window_size
+  with_lens gfx_in_allstate $ do
+    return ()

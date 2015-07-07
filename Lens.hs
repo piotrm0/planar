@@ -1,5 +1,8 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE InstanceSigs #-}
 
 module Lens where
 
@@ -9,6 +12,8 @@ import Control.Monad.IO.Class
 import Control.Monad.State.Strict
 import Language.Haskell.TH
 import Util
+
+--import Data.StateVar (HasSetter,($=))
 
 infixl 9 #@
 class Apply a where
@@ -21,12 +26,15 @@ instance Apply Exp where
 type Getter intype fieldtype = intype -> fieldtype
 type Putter intype fieldtype = intype -> fieldtype -> intype
 
+--type Modifier intype fieldtype = (fieldtype -> fieldtype) -> intype -> intype
+
 data Lens intype fieldtype = Lens {getter :: Getter intype fieldtype
                                   ,putter :: Putter intype fieldtype}
 
 compose_lenses :: Lens b c -> Lens a b -> Lens a c
 compose_lenses lens_bc lens_ab
   = Lens {getter = \ cont_a -> getter lens_bc $ getter lens_ab $ cont_a
+                               
          ,putter = \ cont_a val_c -> (putter lens_ab) cont_a $ (putter lens_bc) ((getter lens_ab) cont_a) val_c
          }
 
@@ -46,8 +54,32 @@ with_lens l field_comp = do
   put $ (putter l) inval next_val
   return out
 
+--instance Monad (Lens a b) where
+--  return x = put x
+--  (>>=) f c = with_lens  
+
+put_lens :: (MonadIO m) => Lens a b -> b -> StateT a m ()
 put_lens l field_val =
   with_lens l $ put field_val
+
+get_lens :: (MonadIO m) => Lens a b -> StateT a m b
+get_lens l =
+  with_lens l $ get
+
+--instance HasSetter (Lens a b) b where
+--  ($=) :: Lens a b -> b -> StateT a m ()
+--  ($=) l fieldval = put_lens l fieldval
+
+infixr 2 !=
+(!=) :: (MonadIO m) => Lens a b -> b -> StateT a m ()
+(!=) = put_lens
+
+infixr 2 !~
+(!~) :: (MonadIO m) => Lens a b -> (b -> b) -> StateT a m b
+(!~) l f = do
+  v <- get_lens l
+  put_lens l (f v)
+  get_lens l
 
 make_with :: String -> Name -> Q [Dec]
 make_with field_name lens = do
@@ -68,17 +100,17 @@ make_with field_name lens = do
   return [type_declare,def_declare]
 
 make_lenses_tuple :: String -> (String, String) -> Q [Dec]
-make_lenses_tuple prefix (fstname, sndname) = do
+make_lenses_tuple postfix (fstname, sndname) = do
   lens_fst <- [e| Lens.Lens {getter = fst
                                ,putter = \(_, old_snd) new_fst -> (new_fst, old_snd)} |]
   lens_snd <- [e| Lens.Lens {getter = snd
                                ,putter = \(old_fst, _) new_snd -> (old_fst, new_snd)} |]
   return [ValD
-          (VarP (mkName (prefix ++ "_" ++ fstname)))
+          (VarP (mkName (fstname ++ "_in_" ++ postfix)))
           (NormalB lens_fst)
           []
          ,ValD
-          (VarP (mkName (prefix ++ "_" ++ sndname)))
+          (VarP (mkName (sndname ++ "_in_" ++ postfix)))
           (NormalB lens_snd)
           []
          ]
@@ -87,7 +119,7 @@ make_lenses_tuple prefix (fstname, sndname) = do
 -- in make_lenses_record "some_prefix" ''SomeType .
 -- Adapted from Data.Lens.Template
 make_lenses_record :: String -> Name -> Q [Dec]
-make_lenses_record prefix rec_type_name = do
+make_lenses_record postfix rec_type_name = do
   info <- reify rec_type_name
   let TyConI (DataD context _ params constructors _) = info
   let params' = map (\ x -> case x of (PlainTV n) -> n; (KindedTV n _) -> n) params
@@ -96,7 +128,7 @@ make_lenses_record prefix rec_type_name = do
     let RecC cons_name fields = cons
     forM_flat fields $ \field -> do
       let (field_name, _, field_type) = field
-      let lens_name = mkName (prefix ++ "_" ++ (nameBase field_name))
+      let lens_name = mkName ((nameBase field_name) ++ "_in_" ++ postfix)
       old_data <- newName "old_data"
       new_value <- newName "new_value"
       let lens_sig = SigD lens_name ((ForallT params)

@@ -1,0 +1,59 @@
+--class Wrapped e1 e2 w where
+--  wrap :: e1 -> w e1 e2
+--  unwrap :: w e1 e2 -> e1
+--class (MonadIO m) => Window m w e view | w e view -> e, w e view -> view where
+--  push :: e -> StateT (w e view) m view
+--  query :: StateT (w e view) m view
+
+--class (MonadIO m) => FixedWindow m w e view | w e view -> e, w e view -> view where
+--  create_fixed :: Int -> m (w e view)
+--class (Monad m)
+--      => FixedWindow container m ele ret | container -> ele, container -> ret where
+--  create_fixed :: Int -> m container
+--  push_fixed :: ele -> StateT container m ()
+--  query_fixed :: StateT container m ret
+
+
+--class MonoidModule c a where
+--  monoid_mempty :: c -> a
+--  monoid_mappend :: c -> a -> a -> a
+--class (Monad m) => BinaryWindow mc c m e | mc -> e, mc -> c, c -> mc where
+--  create_binary :: mc -> m c
+--  push_binary :: e -> StateT c m ()
+--  query_binary :: StateT c m e
+--
+--type MonoidWindow e = (MonoidModule e, e)
+--
+--data MonoidModule a =
+--  MonoidModule {monoid_mempty :: a
+--               ,monoid_mappend :: a -> a -> a}
+--monoid_max :: (Ord e, Bounded e) => MonoidModule e
+--monoid_max = MonoidModule {monoid_mempty = minBound
+--                          ,monoid_mappend = max}
+--monoid_min :: (Ord e, Bounded e) => MonoidModule e
+--monoid_min = MonoidModule {monoid_mempty = maxBound
+--                          ,monoid_mappend = min}
+--instance (MonadIO m, Ord e, Bounded e)
+--         => BinaryWindow (MonoidModule e) (MonoidModule e, e) m e where
+--  create_binary mc =
+--    return (mc, monoid_mempty mc)
+--  push_binary e2 = do
+--    (mc, e1) <- get
+--    put $ (mc, (monoid_mappend mc) e1 e2)
+--  query_binary = gets snd
+
+--instance (Monad m, Monoid e) => MonoidWindow e m e e where
+--  create_monoid = do
+--    return mempty
+--  push_monoid ele = do
+--    old <- get
+--    put $ mappend old ele
+--  query_monoid = get
+--
+--class (Monad m, Monoid ele)
+--      => MonoidWindow container m ele ret | container -> ele, container -> ret where
+--  create_monoid :: m container
+--  push_monoid :: ele -> StateT container m ()
+--  query_monoid :: StateT container m ret
+--
+

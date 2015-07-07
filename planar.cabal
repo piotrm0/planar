@@ -30,7 +30,8 @@ executable planar
                        array,
                        monad-loops,
                        OpenGL,
-                       template-haskell
+                       template-haskell,
+                       StateVar
                        
   -- hs-source-dirs:      
   default-language:    Haskell2010
