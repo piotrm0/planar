@@ -22,17 +22,23 @@ import Data.Word
 import Data.Bits
 import Data.Int
 
+import Data.StateVar(($=))
+
 import Prelude hiding ((.))
 import Control.Category
+
+import Graphics.Rendering.FTGL
 
 import qualified Graphics.Rendering.OpenGL as GL
 import qualified SDL.Raw.Timer as Raw
 import qualified Config
 import Lens
 import Util
+import GLUtil
 import GfxUtil
 
 type AllState cs m = (cs, GfxState cs m)
+type AllStateT cs m r = StateT (AllState cs m) m r
 
 data MonadIO m => GfxState cs m = GfxState {
   window :: SDL.Window
@@ -41,6 +47,7 @@ data MonadIO m => GfxState cs m = GfxState {
   ,draw_handler :: Float -> StateT (AllState cs m) m ()
   ,frame_timer :: FrameTimer
   ,glcontext :: SDL.GLContext
+  ,font :: Font
   }
 
 make_lenses_tuple "allstate" ("client", "gfx")
@@ -70,12 +77,16 @@ init client_state = do
 
   framer <- frame_timer_new 60
 
+  font <- liftIO $ createTextureFont "estre.ttf"
+  liftIO $ setFontFaceSize font 24 72
+
   return (client_state, GfxState {window = window
                                  ,renderer = renderer
                                  ,key_handler = \ _ -> return ()
                                  ,draw_handler = \ _ -> return ()
                                  ,frame_timer = framer
                                  ,glcontext = gl
+                                 ,font = font
                                  })
 
 finish :: MonadIO m => StateT (AllState cs m) m ()
@@ -102,34 +113,31 @@ loop = do
     gfx_state <- gets snd
     waittime <- with_lens (frame_timer_in_gfx . gfx_in_allstate) $ frame_timer_wait
 
---    (next, new_gfx_state) <- lift $ runStateT ((with_lens gfx_framer) frame_timer_next) gfx_state
---    put (client_state, new_gfx_state)
-
---    liftIO $ do
---      putStrLn $ "waiting for: " ++ (show waittime)
-
     SDL.delay (fromIntegral waittime)
     dt <- with_lens (frame_timer_in_gfx . gfx_in_allstate) $ frame_timer_mark
     dts <- seconds_of_counter (fromIntegral dt)
 
+    liftIO $ GL.clear [GL.ColorBuffer]
+
+    window_dims <- get_window_size
+    viewport_center window_dims
+
     gfx_draw_handler dts
+
     SDL.glSwapWindow gfx_window
 
     process_events
 
---    case next of
---      FrameMark dts -> do
---        gfx_draw_handler dts
---        SDL.glSwapWindow gfx_window
---        process_events
---
---      FrameWait t -> do
---        SDL.delay (fromIntegral (truncate (1000 * t)))
---        return False
-
   gfx_state <- gets snd
   liftIO $ putStrLn $ "overall fps=" ++ (show (fps (frame_timer gfx_state)))
   return ()
+
+draw_text :: (MonadIO m) => String -> AllStateT cs m ()
+draw_text s =
+  with_lens gfx_in_allstate $ do
+  font <- get_lens font_in_gfx
+  liftIO $ do
+    renderFont font s All
 
 collect_events_timeout :: (Functor m, MonadIO m) => Float -> m [SDL.Event]
 collect_events_timeout t = do

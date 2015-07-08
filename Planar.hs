@@ -49,32 +49,24 @@ main =
     G.finish
     return ()
 
-handle_key :: MonadIO m => Keycode -> StateT (ClientState, G.GfxState cs m) m ()
+handle_key :: MonadIO m => Keycode -> G.AllStateT ClientState m ()
 handle_key kc =
   liftIO $ putStrLn (show kc) >>= return
 
-handle_draw :: (MonadIO m, Functor m) => Float -> StateT (ClientState, G.GfxState cs m) m ()
+handle_draw :: (MonadIO m, Functor m) => Float -> G.AllStateT ClientState m ()
 handle_draw dt = do
   mindt <- with_lens (GU.min_dt_in_frametimer . G.frame_timer_in_gfx . G.gfx_in_allstate) $ Stream.query
   fps <- get_lens (GU.fps_in_frametimer . G.frame_timer_in_gfx . G.gfx_in_allstate)
 
   with_lens G.client_in_allstate $ do
     rot <- rot_in_client !~ (+ 0.1)
---    rot <- with_lens cs_rot $ do
---      temp <- get
---      put $ temp + 0.1
---      return temp
 
     liftIO $ do
       putStrLn $ "fps=" ++ (show fps)
       --    putStrLn $ "min_dt=" ++ (show mindt)
-      GL.clear [GL.ColorBuffer]
-
-      GL.matrixMode $= GL.Modelview 0
-      GL.loadIdentity
 
       GL.rotate rot $ GL.Vector3 0 0 1
-      GL.translate $ ((GL.Vector3 (-0.5) (-0.5) 0.0) :: GL.Vector3 GL.GLfloat)
+      GL.translate $ ((GL.Vector3 (-0.5) (-0.5) (-0.5)) :: GL.Vector3 GL.GLfloat)
 
       GL.renderPrimitive GL.Quads $ do
         vertex_float3 (0,0,0)
@@ -83,4 +75,7 @@ handle_draw dt = do
         vertex_float3 (0,1,0)
 
 --  lift $ avgwindow_print (G.avgwindow_dt state)
+
+  G.draw_text (show fps)
+
   return ()
