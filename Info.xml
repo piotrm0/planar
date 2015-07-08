@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleDevelopmentRegion</key>
+  <string>English</string>
+  
+  <key>CFBundleDocumentTypes</key>
+  <array>
+    <dict>
+      <key>CFBundleTypeRole</key>
+      <string>Editor</string>
+      <key>LSHandlerRank</key>
+      <string>Alternate</string>
+      <key>LSItemContentTypes</key>
+      <array>
+        <string>public.data</string>
+      </array>
+    </dict>
+    <dict>
+      <key>CFBundleTypeName</key>
+      <string>planar</string>
+      <key>CFBundleTypeRole</key>
+      <string>Viewer</string>
+      <key>LSHandlerRank</key>
+      <string>Owner</string>
+      <key>LSItemContentTypes</key>
+      <array>
+        <string>pw.spearmint.mintdemo</string>
+      </array>
+    </dict>
+  </array>
+
+  <key>UTExportedTypeDeclarations</key>
+  <array>
+    <dict>
+      <key>UTTypeConformsTo</key>
+      <array>
+        <string>public.data</string>
+      </array>
+      <key>UTTypeIdentifier</key>
+      <string>pw.spearmint.mintdemo</string>
+      <key>UTTypeDescription</key>
+      <string>Spearmint Demo</string>
+      <key>UTTypeIconFile</key>
+      <string>spearmint</string>
+      <key>UTTypeReferenceURL</key>
+      <string>http://spearmint.pw/</string>
+      <key>UTTypeTagSpecification</key>
+      <dict>
+        <key>public.filename-extension</key>
+        <string>mintdemo</string>
+      </dict>
+    </dict>
+  </array>
+
+  <key>NSAppleScriptEnabled</key>
+  <string>YES</string>
+  
+  <key>CFBundleDocumentTypes</key>
+  <array>
+
+    <dict>
+      <key>CFBundleTypeRole</key>
+      <string>Shell</string>
+      <key>LSItemContentTypes</key>
+      <array>
+        <string>public.unix-executable</string>
+      </array>
+    </dict>
+    
+    <dict>
+      <key>CFBundleTypeName</key>
+      <string>Folders</string>
+      <key>CFBundleTypeOSTypes</key>
+      <array>
+        <string>fold</string>
+      </array>
+      <key>CFBundleTypeRole</key>
+      <string>Editor</string>
+    </dict>
+    
+    <dict>
+      <key>CFBundleTypeExtensions</key>
+      <array>
+        <string>pdf</string>
+      </array>
+      <key>CFBundleTypeIconFile</key>
+      <string>icon.icns</string>
+      <key>CFBundleTypeName</key>
+      <string>Some file</string>
+      <key>CFBundleTypeOSTypes</key>
+      <array>
+        <string>PDF </string>
+      </array>
+      <key>CFBundleTypeRole</key>
+      <string>Editor</string>
+    </dict>
+  </array>
+  
+  <key>CFBundleIconFile</key>
+  <string>icon</string>
+  <key>CFBundleExecutable</key>
+  <string>planar</string>
+  <key>CFBundleIdentifier</key>
+  <string>org.piotrm.planar</string>
+  <key>CFBundleInfoDictionaryVersion</key>
+  <string>6.0</string>
+  <key>CFBundlePackageType</key>
+  <string>APPL</string>
+  <key>CFBundleShortVersionString</key>
+  <string>1.0</string>
+  <key>CFBundleVersion</key>
+  <string>1.0</string>
+  <key>LSMinimumSystemVersion</key>
+  <string>10.6</string>
+</dict>
+</plist>

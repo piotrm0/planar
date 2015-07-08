@@ -18,9 +18,12 @@ import Control.Monad.IO.Class
 import Control.Monad.State.Strict
 import Data.Functor.Identity
 import Foreign.C.Types
+import Foreign.C.String
 import Data.Word
 import Data.Bits
 import Data.Int
+import qualified System.Environment.FindBin
+import qualified System.Directory
 
 import Data.StateVar(($=))
 
@@ -30,7 +33,8 @@ import Control.Category
 import Graphics.Rendering.FTGL
 
 import qualified Graphics.Rendering.OpenGL as GL
-import qualified SDL.Raw.Timer as Raw
+import qualified SDL.Raw as SDLR
+
 import qualified Config
 import Lens
 import Util
@@ -43,11 +47,14 @@ type AllStateT cs m r = StateT (AllState cs m) m r
 data MonadIO m => GfxState cs m = GfxState {
   window :: SDL.Window
   ,renderer :: SDL.Renderer
-  ,key_handler :: SDL.Keycode -> StateT (AllState cs m) m ()
-  ,draw_handler :: Float -> StateT (AllState cs m) m ()
+  ,key_handler :: SDL.Keycode -> AllStateT cs m ()
+  ,draw_handler :: Float -> AllStateT cs m ()
+  ,drop_handler :: String -> AllStateT cs m ()
   ,frame_timer :: FrameTimer
   ,glcontext :: SDL.GLContext
   ,font :: Font
+  ,binpath :: String
+  ,respath :: String
   }
 
 make_lenses_tuple "allstate" ("client", "gfx")
@@ -56,6 +63,14 @@ make_lenses_record "gfx" ''Gfx.GfxState
 init :: (MonadIO m, Functor m) => cs -> m (cs, GfxState cs m)
 init client_state = do
   SDL.initialize [SDL.InitVideo]
+
+  
+  old_state <- SDLR.eventState SDLR.SDL_DROPFILE (-1)
+  _ <- SDLR.eventState SDLR.SDL_DROPFILE 1
+  new_state <- SDLR.eventState SDLR.SDL_DROPFILE (-1)
+
+  liftIO $ do
+    putStrLn $ "changed event state from " ++ (show old_state) ++ " to " ++ (show new_state)
 
   let winConfig =
           SDL.defaultWindow {SDL.windowPosition = SDL.Absolute (P (V2 100 100))
@@ -77,16 +92,26 @@ init client_state = do
 
   framer <- frame_timer_new 60
 
-  font <- liftIO $ createTextureFont "estre.ttf"
+  bin <- liftIO $ System.Environment.FindBin.getProgPath
+  let res = bin ++ "/../Resources"
+  font <- liftIO $ createTextureFont $ res ++ "/estre.ttf"
   liftIO $ setFontFaceSize font 24 72
+
+  liftIO $ do
+    dir <- System.Directory.getCurrentDirectory 
+    putStrLn $ "bin dir=" ++ (show bin)
+    putStrLn $ "res dir=" ++ (show res)
 
   return (client_state, GfxState {window = window
                                  ,renderer = renderer
                                  ,key_handler = \ _ -> return ()
                                  ,draw_handler = \ _ -> return ()
+                                 ,drop_handler = \ _ -> return ()
                                  ,frame_timer = framer
                                  ,glcontext = gl
                                  ,font = font
+                                 ,binpath = bin
+                                 ,respath = res
                                  })
 
 finish :: MonadIO m => StateT (AllState cs m) m ()
@@ -162,12 +187,18 @@ process_event ev = do
   (client_state, gfx_state) <- get
   case SDL.eventPayload ev of
     SDL.QuitEvent -> return True
+    SDL.DropEvent cs_string -> do
+      s <- liftIO $ peekCAString cs_string
+      drop_handler gfx_state s
+      return False
     SDL.KeyboardEvent _ SDL.KeyDown _ _ (SDL.Keysym _ KeycodeEscape _) -> return True
     SDL.KeyboardEvent _ SDL.KeyDown _ _ (SDL.Keysym _ kc _) ->
-      do () <- (key_handler gfx_state) kc
+      do key_handler gfx_state kc
          return False
       --(SDL.MouseButtonEvent _ SDL.MouseButtonDown _ _ _ _ _) -> True
-    _ -> return False
+    e -> do
+      liftIO $ putStrLn $ "unhandled event: " ++ (show e)
+      return False
 
 process_events_wait :: (MonadIO m, Functor m) => Float -> StateT (AllState cs m) m Bool
 process_events_wait t = do

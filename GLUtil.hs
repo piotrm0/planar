@@ -51,4 +51,3 @@ viewport_2d (V2 width height) = liftIO $ do
   
 vertex_float3 :: (GLfloat,GLfloat,GLfloat) -> IO ()
 vertex_float3 (a,b,c) = vertex (Vertex3 a b c)
-

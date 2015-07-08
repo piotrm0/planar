@@ -33,6 +33,8 @@ data ClientState = ClientState {
   rot :: GL.GLfloat
 }
 
+type AllStateT m r = G.AllStateT ClientState m r
+
 make_lenses_record "client" ''ClientState
 
 main :: IO ()
@@ -44,16 +46,21 @@ main =
     with_lens G.gfx_in_allstate $ do
       gfx_state <- get
       put $ gfx_state {G.key_handler = handle_key
-                       ,G.draw_handler = handle_draw}
+                      ,G.draw_handler = handle_draw
+                      ,G.drop_handler = handle_drop}
     G.loop
     G.finish
     return ()
 
-handle_key :: MonadIO m => Keycode -> G.AllStateT ClientState m ()
+handle_drop :: MonadIO m => String -> AllStateT m ()
+handle_drop s = liftIO $ do
+  putStrLn $ "drop event with s=" ++ (show s)
+
+handle_key :: MonadIO m => Keycode -> AllStateT m ()
 handle_key kc =
   liftIO $ putStrLn (show kc) >>= return
 
-handle_draw :: (MonadIO m, Functor m) => Float -> G.AllStateT ClientState m ()
+handle_draw :: (MonadIO m, Functor m) => Float -> AllStateT m ()
 handle_draw dt = do
   mindt <- with_lens (GU.min_dt_in_frametimer . G.frame_timer_in_gfx . G.gfx_in_allstate) $ Stream.query
   fps <- get_lens (GU.fps_in_frametimer . G.frame_timer_in_gfx . G.gfx_in_allstate)
@@ -62,8 +69,8 @@ handle_draw dt = do
     rot <- rot_in_client !~ (+ 0.1)
 
     liftIO $ do
-      putStrLn $ "fps=" ++ (show fps)
-      --    putStrLn $ "min_dt=" ++ (show mindt)
+      -- putStrLn $ "fps=" ++ (show fps)
+      -- putStrLn $ "min_dt=" ++ (show mindt)
 
       GL.rotate rot $ GL.Vector3 0 0 1
       GL.translate $ ((GL.Vector3 (-0.5) (-0.5) (-0.5)) :: GL.Vector3 GL.GLfloat)
