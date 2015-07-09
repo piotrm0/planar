@@ -17,6 +17,11 @@
         <string>public.data</string>
       </array>
     </dict>
+  </array>
+
+
+  <!--
+
     <dict>
       <key>CFBundleTypeName</key>
       <string>planar</string>
@@ -29,7 +34,6 @@
         <string>pw.spearmint.mintdemo</string>
       </array>
     </dict>
-  </array>
 
   <key>UTExportedTypeDeclarations</key>
   <array>
@@ -53,6 +57,7 @@
       </dict>
     </dict>
   </array>
+
 
   <key>NSAppleScriptEnabled</key>
   <string>YES</string>
@@ -79,24 +84,9 @@
       <key>CFBundleTypeRole</key>
       <string>Editor</string>
     </dict>
-    
-    <dict>
-      <key>CFBundleTypeExtensions</key>
-      <array>
-        <string>pdf</string>
-      </array>
-      <key>CFBundleTypeIconFile</key>
-      <string>icon.icns</string>
-      <key>CFBundleTypeName</key>
-      <string>Some file</string>
-      <key>CFBundleTypeOSTypes</key>
-      <array>
-        <string>PDF </string>
-      </array>
-      <key>CFBundleTypeRole</key>
-      <string>Editor</string>
-    </dict>
+   
   </array>
+  -->
   
   <key>CFBundleIconFile</key>
   <string>icon</string>

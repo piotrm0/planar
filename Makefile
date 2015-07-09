@@ -1,19 +1,22 @@
 #DEBUG := --ghc-options="-ddump-splices"
 
-build: Info.plist
+ICON := icon
+
+APP := dist/build/planar.app
+BIN := $(APP)/Contents/MacOS/planar
+
+DEP := Info.plist $(ICON).icns $(APP)
+
+$(APP) : $(DEP)
 	cabal build -j8 -v0 $(DEBUG)
 
-run: Info.plist
-	make build
+run: $(APP)
 	./dist/build/planar.app/Contents/MacOS/planar
 
-open: Info.plist
-	make build
+open: $(APP)
 	open ./dist/build/planar.app
 
-planar.iconset: icon/icon_512x512.png
-
-I := icon.iconset/icon_
+I := $(ICON).iconset/$(ICON)_
 eq = $(and $(findstring $(1),$(2)),$(findstring $(2),$(1)))
 double = $(if $(call eq,$(1),512x512),1024x1024,\
          $(if $(call eq,$(1),256x256),512x512,\
@@ -23,16 +26,14 @@ double = $(if $(call eq,$(1),512x512),1024x1024,\
          $(if $(call eq,$(1),16x16),32x32,"fail"))))))
 
 $(I)%@2x.png: icon_512x512.png
-	convert -resize $(call double,$*) icon_512x512.png $(I)$*@2x.png
+	convert -resize $(call double,$*) $(ICON)_512x512.png $(I)$*@2x.png
 $(I)%.png: icon_512x512.png
-	convert -resize $* icon_512x512.png $(I)$*.png
+	convert -resize $* $(ICON)_512x512.png $(I)$*.png
 
-icon.iconset: $(foreach D,16x16 32x32 128x128 256x256 512x512,$(I)$(D).png $(I)$(D)@2x.png)
+$(ICON).iconset: $(foreach D,16x16 32x32 128x128 256x256 512x512,$(I)$(D).png $(I)$(D)@2x.png)
 
-icon.icns: icon.iconset
-	iconutil -c icns icon.iconset
-
-icon: icon.icns
+$(ICON).icns: $(ICON).iconset
+	iconutil -c icns $(ICON).iconset
 
 Info.plist: Info.xml
 	plutil -convert xml1 Info.xml -o Info.plist
@@ -40,5 +41,5 @@ Info.plist: Info.xml
 clean:
 	cabal clean
 	rm -Rf Info.plist
-	rm -Rf icon.icns
-	rm -Rf icon.iconset/*
+	rm -Rf $(ICON).icns
+	rm -Rf $(ICON).iconset/*
