@@ -136,4 +136,3 @@ instance (Monad m, Monoid (ew e e), Wrap2 ew e e)
   query = do
     e <- get
     return $ unwrap2 e
-

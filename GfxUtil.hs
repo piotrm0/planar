@@ -1,7 +1,7 @@
-{-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-
-module GfxUtil where
+module GfxUtil(module GfxUtilPP
+              ,frame_timer_new,frame_timer_wait,frame_timer_mark
+              ,seconds_of_counter) where
+import GfxUtilPP
 
 import Prelude hiding ((.))
 import Control.Category
@@ -34,19 +34,6 @@ seconds_of_counter :: (MonadIO m) => Int64 -> m (Float)
 seconds_of_counter c = do
   f <- Raw.getPerformanceFrequency
   return $ (realToFrac c) / (fromRational (toRational f))
-
-data FrameNext =
-  FrameMark (Float)
-  | FrameWait (Float)
-
-data FrameTimer = FrameTimer {target_dt :: Int64
-                             ,avgwindow_dt :: Stream.AvgWindow Int64 (Ratio Int64)
-                             ,last_mark :: Int64
-                             ,next_mark :: Int64
-                             ,min_dt :: Stream.MinMonoid Int64
-                             ,fps :: Float}
-
-make_lenses_record "frametimer" ''FrameTimer
 
 frame_timer_new :: MonadIO m => Float -> m FrameTimer
 frame_timer_new fps = do

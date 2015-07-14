@@ -147,9 +147,3 @@ make_lenses_record postfix rec_type_name = do
                 (VarP lens_name)
                 (NormalB (RecConE (mkName "Lens") [(mkName "getter", getter_body)
                                                   ,(mkName "putter", putter_body)])) []]
-
-print_type t = do
-  tv <- t
-  runIO $ do
-    putStrLn $ "type=" ++ (show tv)
-  return []

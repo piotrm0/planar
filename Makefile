@@ -5,10 +5,10 @@ ICON := icon
 APP := dist/build/planar.app
 BIN := $(APP)/Contents/MacOS/planar
 
-DEP := Info.plist $(ICON).icns $(APP)
+DEP := *.hs Info.plist $(ICON).icns
 
 $(APP) : $(DEP)
-	cabal build -j8 -v0 $(DEBUG)
+	cabal build -j8 $(DEBUG) -v0
 
 run: $(APP)
 	./dist/build/planar.app/Contents/MacOS/planar

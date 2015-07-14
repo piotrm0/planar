@@ -1,10 +1,4 @@
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE PatternSynonyms #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE KindSignatures #-}
-
-module Gfx where
+module Gfx (module GfxPP,Gfx.init,finish,loop,draw_text_default,add_log,viewport_default_2d) where
 
 import System.Environment
 import SDL
@@ -22,15 +16,13 @@ import Foreign.C.String
 import Data.Word
 import Data.Bits
 import Data.Int
-import qualified System.Environment.FindBin
+
 import qualified System.Directory
 
 import Data.StateVar(($=))
 
-import Prelude hiding ((.))
+import Prelude hiding ((.), log)
 import Control.Category
-
-import Graphics.Rendering.FTGL
 
 import qualified Graphics.Rendering.OpenGL as GL
 import qualified SDL.Raw as SDLR
@@ -40,30 +32,13 @@ import Lens
 import Util
 import GLUtil
 import GfxUtil
+import GLLog
 
-type AllState cs m = (cs, GfxState cs m)
-type AllStateT cs m r = StateT (AllState cs m) m r
-
-data MonadIO m => GfxState cs m = GfxState {
-  window :: SDL.Window
-  ,renderer :: SDL.Renderer
-  ,key_handler :: SDL.Keycode -> AllStateT cs m ()
-  ,draw_handler :: Float -> AllStateT cs m ()
-  ,drop_handler :: String -> AllStateT cs m ()
-  ,frame_timer :: FrameTimer
-  ,glcontext :: SDL.GLContext
-  ,font :: Font
-  ,binpath :: String
-  ,respath :: String
-  }
-
-make_lenses_tuple "allstate" ("client", "gfx")
-make_lenses_record "gfx" ''Gfx.GfxState
+import GfxPP
 
 init :: (MonadIO m, Functor m) => cs -> m (cs, GfxState cs m)
 init client_state = do
   SDL.initialize [SDL.InitVideo]
-
   
   old_state <- SDLR.eventState SDLR.SDL_DROPFILE (-1)
   _ <- SDLR.eventState SDLR.SDL_DROPFILE 1
@@ -72,10 +47,13 @@ init client_state = do
   liftIO $ do
     putStrLn $ "changed event state from " ++ (show old_state) ++ " to " ++ (show new_state)
 
+  let wsize = Config.window_size Config.config
+
   let winConfig =
           SDL.defaultWindow {SDL.windowPosition = SDL.Absolute (P (V2 100 100))
-                            ,SDL.windowSize     = Config.window_size Config.config
-                            ,SDL.windowOpenGL   = Just (Config.opengl Config.config)}
+                            ,SDL.windowSize     = wsize
+                            ,SDL.windowOpenGL   = Just (Config.opengl Config.config)
+                            ,SDL.windowResizable = True}
                      
   let rdrConfig =
           SDL.RendererConfig {SDL.rendererSoftware      = False
@@ -92,15 +70,7 @@ init client_state = do
 
   framer <- frame_timer_new 60
 
-  bin <- liftIO $ System.Environment.FindBin.getProgPath
-  let res = bin ++ "/../Resources"
-  font <- liftIO $ createTextureFont $ res ++ "/estre.ttf"
-  liftIO $ setFontFaceSize font 24 72
-
-  liftIO $ do
-    dir <- System.Directory.getCurrentDirectory 
-    putStrLn $ "bin dir=" ++ (show bin)
-    putStrLn $ "res dir=" ++ (show res)
+  log <- create 1000
 
   return (client_state, GfxState {window = window
                                  ,renderer = renderer
@@ -109,12 +79,12 @@ init client_state = do
                                  ,drop_handler = \ _ -> return ()
                                  ,frame_timer = framer
                                  ,glcontext = gl
-                                 ,font = font
-                                 ,binpath = bin
-                                 ,respath = res
+                                 ,log = log
+                                 ,window_size = wsize
+                                 ,bg_rot = 0.0
                                  })
 
-finish :: MonadIO m => StateT (AllState cs m) m ()
+finish :: MonadIO m => AllStateT cs m ()
 finish = do
   (client_state, gfx_state) <- get
   liftIO $ do
@@ -125,30 +95,54 @@ finish = do
 
 loop :: (Functor m, MonadIO m) => StateT (AllState cs m) m ()
 loop = do
-  (client_state, gfx_state) <- get
-
-  let gfx_renderer = renderer gfx_state
-  let gfx_draw_handler = draw_handler gfx_state
-  let gfx_window = window gfx_state
-
+  gfx_renderer <- gets $ renderer . snd
+  
   _ <- SDL.renderClear gfx_renderer
   _ <- SDL.renderPresent gfx_renderer
 
+  GL.blend $= GL.Enabled
+  GL.blendFunc $= (GL.SrcAlpha, GL.OneMinusSrcAlpha)
+
+  GL.clearColor $= GL.Color4 0.5 0.5 0.5 (1.0 :: GL.GLfloat)
+
   iterateUntil Prelude.id $ do
-    gfx_state <- gets snd
-    waittime <- with_lens (frame_timer_in_gfx . gfx_in_allstate) $ frame_timer_wait
+    dts <- with_lens gfx_in_allstate $ do
+      
+      dts <- with_lens frame_timer_in_gfx $ do
+        waittime <- frame_timer_wait
+        SDL.delay $ fromIntegral waittime
+        dt <- frame_timer_mark
+        dts <- seconds_of_counter $ fromIntegral dt
+        return dts
 
-    SDL.delay (fromIntegral waittime)
-    dt <- with_lens (frame_timer_in_gfx . gfx_in_allstate) $ frame_timer_mark
-    dts <- seconds_of_counter (fromIntegral dt)
+      liftIO $
+        GL.clear [GL.ColorBuffer,GL.DepthBuffer]
 
-    liftIO $ GL.clear [GL.ColorBuffer]
+      window_dims@(V2 width height) <- gets window_size
 
-    window_dims <- get_window_size
-    viewport_center window_dims
+      draw_bg
 
+      viewport_2d window_dims
+
+      liftIO $ do
+        GL.matrixMode $= GL.Modelview 0
+        GL.loadIdentity
+        GL.translate $ GL.Vector3 0 (fromIntegral height) ((-0.5) :: GL.GLfloat)
+
+      with_lens log_in_gfx $ GLLog.render window_dims
+
+      viewport_center window_dims
+
+      return dts
+
+    liftIO $ do
+      GL.matrixMode $= GL.Modelview 0
+      GL.loadIdentity    
+
+    gfx_draw_handler <- gets (draw_handler . snd)
     gfx_draw_handler dts
 
+    gfx_window <- gets (window . snd)
     SDL.glSwapWindow gfx_window
 
     process_events
@@ -157,12 +151,45 @@ loop = do
   liftIO $ putStrLn $ "overall fps=" ++ (show (fps (frame_timer gfx_state)))
   return ()
 
-draw_text :: (MonadIO m) => String -> AllStateT cs m ()
-draw_text s =
-  with_lens gfx_in_allstate $ do
-  font <- get_lens font_in_gfx
+draw_bg :: (MonadIO m) => GfxStateT cs m ()
+draw_bg = do
+  rot <- gets bg_rot
+  size <- gets window_size
+  bg_rot_in_gfx != rot + 0.037
+
+  viewport_center size
+
+--  GL.matrixMode $= GL.Projection
+--  GL.loadIdentity
+
   liftIO $ do
-    renderFont font s All
+    GL.color $ GL.Color4 1 1 1 (0.25 :: GL.GLfloat)
+
+    GL.rotate 30 $ GL.Vector3 1 0 (0 :: GL.GLfloat)
+    GL.translate $ GL.Vector3 0 (-200) (-200 :: GL.GLfloat)
+    GL.rotate rot $ GL.Vector3 0 1 (0 :: GL.GLfloat)
+
+    GL.matrixMode $= GL.Modelview 0
+    GL.loadIdentity
+
+    GL.renderPrimitive GL.Lines $ do
+      forM_ [-10..10] $ \ x -> do
+        vertex_float3 (x*10, 0, -100)
+        vertex_float3 (x*10, 0, 100)
+        vertex_float3 (-100, 0, x*10)
+        vertex_float3 (100, 0, x*10)
+
+window_resize :: (MonadIO m, Integral e) => V2 e -> AllStateT cs m ()
+window_resize (new_size@(V2 new_width new_height)) = do
+  GL.viewport $= (GL.Position 0 0, GL.Size (fromIntegral new_width) (fromIntegral new_height))
+  with_lens gfx_in_allstate $ do
+    window_size_in_gfx != V2 (fromIntegral new_width) (fromIntegral new_height)
+    return ()
+  
+draw_text_default :: (MonadIO m) => String -> AllStateT cs m ()
+draw_text_default s = do
+  font <- Config.default_font
+  draw_text font [s]
 
 collect_events_timeout :: (Functor m, MonadIO m) => Float -> m [SDL.Event]
 collect_events_timeout t = do
@@ -177,43 +204,60 @@ collect_events = do
     Nothing -> return []
     Just ev -> fmap (ev :) collect_events
 
-process_events :: (Functor m, MonadIO m) => StateT (AllState cs m) m Bool
+process_events :: (Functor m, MonadIO m) => AllStateT cs m Bool
 process_events = do
   events <- collect_events
   anyM process_event events
 
-process_event :: MonadIO m => SDL.Event -> StateT (AllState cs m) m Bool
+process_event :: MonadIO m => SDL.Event -> AllStateT cs m Bool
 process_event ev = do
   (client_state, gfx_state) <- get
   case SDL.eventPayload ev of
     SDL.QuitEvent -> return True
     SDL.DropEvent cs_string -> do
       s <- liftIO $ peekCAString cs_string
+      add_log $ Item Message $ "drop event: " ++ (show s)
       drop_handler gfx_state s
       return False
     SDL.KeyboardEvent _ SDL.KeyDown _ _ (SDL.Keysym _ KeycodeEscape _) -> return True
     SDL.KeyboardEvent _ SDL.KeyDown _ _ (SDL.Keysym _ kc _) ->
       do key_handler gfx_state kc
+         add_log $ Item Message $ "key press event: " ++ (show kc)
          return False
       --(SDL.MouseButtonEvent _ SDL.MouseButtonDown _ _ _ _ _) -> True
+    e@(SDL.WindowResized _ ns) -> do
+      window_resize ns
+      add_log $ Item Message $ "window resize: " ++ (show e)
+      liftIO $ putStrLn $ "window resize: " ++ (show e)
+      return False
     e -> do
-      liftIO $ putStrLn $ "unhandled event: " ++ (show e)
+      --add_log $ Item Message $ "unhandled event: " ++ (show e)
+      --liftIO $ putStrLn $ "unhandled event: " ++ (show e)
       return False
 
-process_events_wait :: (MonadIO m, Functor m) => Float -> StateT (AllState cs m) m Bool
+process_events_wait :: (MonadIO m, Functor m) => Float -> AllStateT cs m Bool
 process_events_wait t = do
   events <- collect_events_timeout t
   anyM process_event events
 
-get_window_size :: MonadIO m => StateT (AllState cs m) m (V2 CInt)
-get_window_size =
-  with_lens (window_in_gfx . gfx_in_allstate) $ do
-    w <- get
-    ws <- liftIO $ SDL.getWindowSize w
-    return ws
+--get_window_size :: MonadIO m => AllStateT cs m (V2 CInt)
+--get_window_size =
+--  with_lens (window_in_gfx . gfx_in_allstate) $ do
+--    w <- get
+--    ws <- liftIO $ SDL.getWindowSize w
+--    return ws
 
-setup_viewport :: MonadIO m => StateT (AllState cs m) m ()
+setup_viewport :: MonadIO m => AllStateT cs m ()
 setup_viewport = do
-  V2 width height <- get_window_size
+  V2 width height <- gets $ window_size . snd
   with_lens gfx_in_allstate $ do
     return ()
+
+add_log :: (MonadIO m) => Item -> AllStateT cs m ()
+add_log i =
+  with_lens (log_in_gfx . gfx_in_allstate) $ add i
+
+viewport_default_2d :: (MonadIO m) => AllStateT cs m ()
+viewport_default_2d = do
+  s <- gets $ window_size . snd
+  viewport_2d s
