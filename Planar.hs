@@ -1,3 +1,5 @@
+module Main where
+
 import PlanarPP
 
 import System.Environment
@@ -12,6 +14,8 @@ import Control.Monad.Primitive
 import Control.Monad.State.Strict
 import Data.Word
 import Data.Int
+
+import qualified Control.Monad.Identity as I
 
 import Data.Set
 
@@ -43,103 +47,88 @@ import Codegen
 import JIT
 
 import qualified GLLog as Log
---import qualified GLText as Text
---import qualified GLPanel as Panel
 
-import GLWidget as GLW
+import GLWidgetPP
+import GLWidget
 
 import Data.StateVar(($=))
 
 main :: IO ()
-main = do
-  p <- execT create $ do
-    position != V2 0 0
+main =
+  widget_create >>= ( execStateT $ do
+                          position_in_base . panel_base_in_panel != V2 0 0 )
+  >>= \ p -> ( G.init (ClientData {rot = 0.0
+                                  ,panel = p}) )
+             >>= ( evalStateT $ do
+                       withLensT G.gfx_in_allstate $ do
+                         G.key_handler_in_gfx  != planar_handle_key
+                         G.draw_handler_in_gfx != handle_draw
+                         G.drop_handler_in_gfx != handle_drop
+                       G.loop
+                       G.finish
+                       return () )
 
-  let cs = ClientState {rot = 0.0
-                       ,panel = p
-                       }
-  s <- G.init cs
-  (flip evalStateT) s $ do
-    with_lens G.gfx_in_allstate $ do
-      gfx_state <- get
-      put $ gfx_state {G.key_handler = handle_key
-                      ,G.draw_handler = handle_draw
-                      ,G.drop_handler = handle_drop}
-    G.loop
-    G.finish
-    return ()
+handle_drop :: (MonadIO m, Functor m) => String -> AllStateT m ()
+handle_drop s = let font = Config.default_font in
+  (liftIO $ read_file s)
+  >>= \ (content, maybe_exprs) ->
+  withLensT (panel_in_client . G.client_in_allstate)
+  ( panel_wrap_focus_in_panel != True
+    >> panel_arrange_in_panel    != Horizontal
+    >> focused_in_base . panel_base_in_panel != True
+    >> padding_in_base . panel_base_in_panel != 5
 
---add_panel :: (MonadIO m) => GLW.Text -> AllStateT m ()
---add_panel p =
---  with_lens (panel_in_client . G.client_in_allstate) $ do
---    old_panels <- get
---    put $ insert p old_panels
+    >> ( widget_create >>= execStateT ( padding_in_base . text_base_in_text != 5
+                                        >> set_content content ) )
+    >>= ( \ e -> add_element (GLText e) )
 
-handle_drop :: MonadIO m => String -> AllStateT m ()
-handle_drop s = do
-  font <- Config.default_font
+    >> ( widget_create >>= execStateT ( padding_in_base . text_base_in_text != 5
+                                        >> set_content content ) )
+    >>= ( \ e -> add_element (GLText e ) )
+  
+    >> case maybe_exprs of
+    Nothing -> return ()
+    Just exprs ->
+      ( widget_create >>= execStateT
+        ( panel_arrange_in_panel != Vertical
+          >> forM_ exprs (\ e ->let pretty_text = Pretty.render (pretty e) in
+                            ( widget_create >>= execStateT ( padding_in_base . text_base_in_text != 5
+                                                             >> set_content pretty_text ) )
+                            >>= \ e -> add_element (GLText e) ) )
+        >>= ( \e -> add_element (GLPanel e) ) )
 
-  V2 _ height' <- gets (G.window_size . snd)
-  let height = fromIntegral height'
+      >> liftIO ( llvm_of_exprs exprs >>= JIT.getAssembly )
+      >>= \ (llvm_raw, llvm_opt) ->
+      widget_create >>= ( execStateT $
+                          padding_in_base . text_base_in_text != 5 
+                          >> set_content llvm_raw )
+      >>= ( \ e -> add_element (GLText e) )
+      >> widget_create >>= ( execStateT $
+                             padding_in_base . text_base_in_text != 5
+                             >> set_content llvm_opt )
+      >>= ( \ e -> add_element (GLText e) )
 
-  (content, maybe_exprs) <- liftIO $ do
-    putStrLn $ "drop event with s=" ++ (show s)
-    r@(content, maybe_exprs) <- read_file s
-    putStrLn $ content
-    return r
+    >> widget_refit )
 
-  with_lens (panel_in_client . G.client_in_allstate) $ do
-    GLW.padding != 5
-    GLW.arrange_in_panel != GLW.Horizontal
-    
-    raw_text <- execT create $ do
-      GLW.padding != 5
-      GLW.set_content content
+planar_handle_key :: Monad m => Keysym -> AllStateT m ()
+planar_handle_key kc =
+  let wlens = panel_in_client . G.client_in_allstate in
+--  withLensT (panel_in_client . G.client_in_allstate) $ do
+  case kc of
+  Keysym {keysymKeycode = kk} ->
+    case kk of KeycodeTab -> withLensT wlens $ widget_next_focus >> return ()
+               kc -> widget_handle_key (Left kc) wlens
+  Keysym {keysymScancode = sc} ->
+    widget_handle_key (Right sc) wlens
 
-    GLW.add_element (GLW.GLText raw_text)
- 
-    case maybe_exprs of
-      Nothing -> return ()
-      Just exprs -> do
-        panel_parsed <- execT create $ do
-          GLW.arrange_in_panel != GLW.Vertical
-          forM_ exprs (\ e -> do
-                           let pretty_text = Pretty.render (pretty e)
-                           new_panel <- execT GLW.create $ do
-                             GLW.padding != 5
-                             GLW.set_content pretty_text
-                           GLW.add_element $ (GLW.GLText new_panel))
-
-        add_element (GLW.GLPanel panel_parsed)
-
-        (llvm_raw, llvm_opt) <- liftIO $ do
-          llvm <- llvm_of_exprs exprs
-          JIT.getAssembly llvm
-
-        panel_llvm_raw <- execT GLW.create $ do
-          GLW.padding != 5
-          GLW.set_content llvm_raw
-
-        panel_llvm_opt <- execT GLW.create $ do
-          GLW.padding != 5
-          GLW.set_content llvm_opt
-
-        add_element (GLW.GLText panel_llvm_raw)
-        add_element (GLW.GLText panel_llvm_opt)
-
-    refit
-
---    liftIO $ putStrLn "\n\n\n\n\n"
---    refit
-
-handle_key :: MonadIO m => Keycode -> AllStateT m ()
-handle_key kc =
-  liftIO $ putStrLn (show kc) >>= return
+--      _ -> do
+--        liftIO $ putStrLn ("planar_handle_key: unhandled key event: " ++ (show kc))
+--        return ()
 
 handle_draw :: (MonadIO m, Functor m) => Float -> AllStateT m ()
 handle_draw dt = do
-  mindt <- with_lens (GU.min_dt_in_frametimer . G.frame_timer_in_gfx . G.gfx_in_allstate) $ Stream.query
-  fps <- get_lens (GU.fps_in_frametimer . G.frame_timer_in_gfx . G.gfx_in_allstate)
+  mindt <- withLensT (GU.min_dt_in_frametimer . G.frame_timer_in_gfx . G.gfx_in_allstate) $ Stream.query
+  fps   <- getLensT  (GU.fps_in_frametimer    . G.frame_timer_in_gfx . G.gfx_in_allstate)
 
   p <- gets $ panel . fst
 
@@ -149,7 +138,7 @@ handle_draw dt = do
     GL.matrixMode $= GL.Modelview 0
     GL.loadIdentity
 
-  runStateT GLW.render p
+  runStateT widget_render p
 
   G.draw_text_default (show fps)
 

@@ -1,3 +1,6 @@
+-- {-# LANGUAGE RankNTypes #-}
+-- {-# LANGUAGE ImpredicativeTypes #-}
+
 module PlanarPP where
 import qualified GfxPP as G
 import qualified GfxUtil as GU
@@ -21,20 +24,25 @@ import Control.Monad.State.Strict
 import Data.Word
 import Data.Int
 
+import qualified Control.Monad.Identity as I
+
 import Data.Set
 
 import qualified Graphics.Rendering.OpenGL as GL
 
---import qualified GLText as Text
---import qualified GLPanel
+import GLWidgetPP as GLW
+import qualified Gfx as G
 
-import GLWidget as GLW
+type AllData m     = G.AllData   (ClientData m) m
+type AllStateT m r = G.AllStateT (ClientData m) m r
+type AllState r    = AllStateT I.Identity r
+--type AllState r = G.AllStateT (ClientState m) m r
 
-data ClientState =
-  ClientState {rot :: GL.GLfloat
-              ,panel :: GLW.Panel}
+--type AllState = (ClientState, G.GfxState)
 
+data ClientData m =
+  ClientData {rot :: GL.GLfloat
+             ,nothing :: m Int
+             ,panel :: GLW.Panel (AllData m)}
 
-type AllStateT m r = G.AllStateT ClientState m r
-
-make_lenses_record "client" ''ClientState
+make_lenses_record "client" ''ClientData

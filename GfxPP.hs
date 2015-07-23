@@ -1,3 +1,7 @@
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE ImpredicativeTypes #-}
+{-# LANGUAGE GADTs #-}
+
 module GfxPP where
 
 import System.Environment
@@ -27,6 +31,8 @@ import Control.Category
 import qualified Graphics.Rendering.OpenGL as GL
 import qualified SDL.Raw as SDLR
 
+import qualified Control.Monad.Identity as I
+
 import qualified Config
 import Lens
 import Util
@@ -36,22 +42,41 @@ import GLLog
 
 import Lens
 
-type GfxStateT cs m r = StateT (GfxState cs m) m r
-type AllState cs m = (cs, GfxState cs m)
-type AllStateT cs m r = StateT (AllState cs m) m r
+--type AllDataT cs m = (cs, GfxDataT cs m)
 
-data MonadIO m => GfxState cs m = GfxState {
-  window :: SDL.Window
-  ,renderer :: SDL.Renderer
-  ,key_handler :: SDL.Keycode -> AllStateT cs m ()
-  ,draw_handler :: Float -> AllStateT cs m ()
-  ,drop_handler :: String -> AllStateT cs m ()
-  ,frame_timer :: FrameTimer
-  ,glcontext :: SDL.GLContext
-  ,log :: Log
-  ,window_size :: V2 CInt
-  ,bg_rot :: GL.GLfloat
-  }
+type KeyHandler  cs m = SDL.Keysym -> AllStateT cs m ()
+type DrawHandler cs m = Float      -> AllStateT cs m ()
+type DropHandler cs m = String     -> AllStateT cs m ()
+
+data GfxData cs m where
+  GfxData :: {
+    window :: SDL.Window
+    ,renderer :: SDL.Renderer
+    ,key_handler  :: KeyHandler cs m
+    ,draw_handler :: DrawHandler cs m
+    ,drop_handler :: DropHandler cs m
+    ,frame_timer :: FrameTimer
+    ,glcontext :: SDL.GLContext
+    ,log :: Log
+    ,window_size :: V2 CInt
+    ,bg_rot :: GL.GLfloat
+    } -> GfxData cs m
+
+type GfxStateT cs m r = StateT (GfxData cs m) m r
+type GfxState cs r = GfxStateT cs I.Identity r
+
+type AllData cs m = (cs, GfxData cs m)
+type AllStateT cs m r = StateT (AllData cs m) m r
+type AllState cs r = AllStateT cs I.Identity r
 
 make_lenses_tuple "allstate" ("client", "gfx")
-make_lenses_record "gfx" ''GfxPP.GfxState
+
+--drop_handler_in_gfx :: Lens (GfxData cs) DropHandler
+--drop_handler_in_gfx =
+--  Lens
+--  ( \ GfxData {drop_handler = x} -> x )
+--  (\ old_data
+--   -> \ new_value
+--      -> old_data {drop_handler = new_value})
+
+make_lenses_record "gfx" ''GfxPP.GfxData

@@ -18,35 +18,39 @@ cabal-version:       >=1.10
 executable planar
   main-is:             Planar.hs
   -- other-modules:       
-  default-extensions:          ScopedTypeVariables,TemplateHaskell,KindSignatures,OverloadedStrings,PatternSynonyms
+  default-extensions: ScopedTypeVariables
+                    , TemplateHaskell
+                    , KindSignatures
+                    , OverloadedStrings
+                    , PatternSynonyms
 
 --  include-dirs: /usr/local/opt/llvm/include
 --  extra-lib-dirs: /usr/local/opt/llvm/lib
-                         
-  build-depends:       base,
-                       sdl2 >= 2,
-                       linear,
-                       mtl,
-                       transformers,
-                       text,
-                       vector,
-                       primitive,
-                       array,
-                       monad-loops,
-                       OpenGL,
-                       template-haskell,
-                       StateVar,
-                       FTGL >= 2.1,
-                       directory,
-                       FindBin,
-                       containers,
-                       parsec,
-                       llvm-general,
-                       llvm-general-pure,
-                       haskeline,
-                       split,
-                       pretty,
-                       OpenGLRaw
+                             
+  build-depends:       base
+                     , sdl2 >= 2
+                     , linear
+                     , mtl
+                     , transformers
+                     , text
+                     , vector
+                     , primitive
+                     , array
+                     , monad-loops
+                     , OpenGL
+                     , template-haskell
+                     , StateVar
+                     , FTGL >= 2.1
+                     , directory
+                     , FindBin
+                     , containers
+                     , parsec
+                     , llvm-general
+                     , llvm-general-pure
+                     , haskeline
+                     , split
+                     , pretty
+                     , OpenGLRaw
 
   if os(darwin)
      build-depends: cabal-macosx, plist

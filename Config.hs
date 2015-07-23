@@ -14,6 +14,8 @@ import Data.Functor.Identity
 import Foreign.C.Types
 import Data.Text
 
+import System.IO.Unsafe
+
 import qualified System.Environment.FindBin
 import qualified Graphics.Rendering.FTGL as FTGL
 
@@ -28,19 +30,15 @@ data Config = Config {
 
 config :: Config
 config = Config {window_title = "planar"
-                ,window_size = V2 800 600
-                ,font_size = 16
-                ,opengl = SDL.defaultOpenGL {glProfile = Compatibility Normal 3 2}}
+                ,window_size  = V2 800 600
+                ,font_size    = 16
+                ,opengl       = SDL.defaultOpenGL {glProfile = Compatibility Normal 3 2}}
 
-dir_bin :: MonadIO m => m String
-dir_bin = liftIO System.Environment.FindBin.getProgPath
+dir_bin :: String
+dir_bin = unsafePerformIO $ System.Environment.FindBin.getProgPath
 
-dir_res :: MonadIO m => m String
-dir_res = do
-  bin <- dir_bin
-  return $ bin ++ "/../Resources"
+dir_res :: String
+dir_res = dir_bin ++ "/../Resources"
 
-default_font :: MonadIO m => m FTGL.Font
-default_font = do
-  res <- dir_res
-  create_font (res ++ "/estre.ttf") (font_size config) 72
+default_font :: FTGL.Font
+default_font = get_font (dir_res ++ "/estre.ttf") (font_size config) 72

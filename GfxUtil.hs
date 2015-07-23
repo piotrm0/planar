@@ -1,3 +1,5 @@
+{-# LANGUAGE FlexibleContexts #-}
+
 module GfxUtil(module GfxUtilPP
               ,frame_timer_new,frame_timer_wait,frame_timer_mark
               ,seconds_of_counter) where
@@ -57,19 +59,19 @@ frame_timer_wait = do
   if remain_time <= 0 then return 0
     else return (truncate (1000 * remain_time_s))
 
-frame_timer_mark :: forall m . (Functor m, MonadIO m) => StateT FrameTimer m Int64
+frame_timer_mark :: (Functor m, MonadIO m) => StateT FrameTimer m Int64
 frame_timer_mark = do
-  now_time <- (fmap fromIntegral) Raw.getPerformanceCounter
+  now_time <- liftIO $ (fmap fromIntegral) Raw.getPerformanceCounter
 
   last_mark <- gets last_mark
   target_dt <- gets target_dt
   let dt = now_time - last_mark
 
-  with_lens min_dt_in_frametimer $ Stream.push dt
+  withLensT min_dt_in_frametimer $ Stream.push dt
 
   dts <- seconds_of_counter (fromIntegral dt)
 
-  avg <- with_lens avgwindow_dt_in_frametimer $ Stream.push dt
+  avg <- withLensT avgwindow_dt_in_frametimer $ Stream.push dt
 
   avgs <- seconds_of_counter (truncate avg)
     
@@ -77,8 +79,8 @@ frame_timer_mark = do
           
   s <- get
 
-  with_lens last_mark_in_frametimer $ put now_time
-  with_lens next_mark_in_frametimer $ put $ now_time + (target_dt + (target_dt - (truncate avg)))
-  with_lens fps_in_frametimer $ put new_fps
+  withLensT last_mark_in_frametimer $ put now_time
+  withLensT next_mark_in_frametimer $ put $ now_time + (target_dt + (target_dt - (truncate avg)))
+  withLensT fps_in_frametimer $ put new_fps
 
   return dt

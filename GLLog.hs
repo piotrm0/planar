@@ -26,8 +26,8 @@ data Log = Log {log_max_items :: Int
                ,log_items :: Seq Item}
 
 create :: (MonadIO m) => Int -> m Log
-create size = do
-  font <- Config.default_font
+create size =
+  let font = Config.default_font in
   return $ Log {log_max_items = size
                ,log_font = font
                ,log_items = empty}
@@ -41,40 +41,32 @@ add i = do
         else
           items
   put $ l {log_items = items' |> i}
-
-render :: (MonadIO m, Integral e) => V2 e -> StateT Log m ()
+  
+render :: (MonadIO m, Integral e, Functor m) => V2 e -> StateT Log m ()
 render bounds@(V2 width height) = do
   let width' = fromIntegral width
   let height' = fromIntegral height
   font <- gets log_font
-  font_size :: GLfloat <- liftIO $ fmap fromIntegral $ FTGL.getFontFaceSize font
+  font_size <- liftIO $ fmap fromIntegral $ FTGL.getFontFaceSize font
   items <- gets log_items
-  let max_render :: Int = truncate $ (fromIntegral height) / font_size / 2
+  let max_render = truncate $ (fromIntegral height) / font_size / 2
   let num_items = length items
   let to_render = drop (num_items - max_render) items 
 
-  liftIO $ do
-    matrixMode $= Modelview 0
-    preservingMatrix $ do
-      loadIdentity
-      translate $ Vector3 0 (fromIntegral height) ((-0.5) :: GLfloat)
+  liftIO $ matrixMode $= Modelview 0
+  preservedMatrix $ do
+    liftIO $ do loadIdentity
+                color $ Color4 0.0 0.0 0.0 (0.5 :: GLfloat)
+                renderPrimitive Quads $ do
+                  vertex_float3 (0,0,0)
+                  vertex_float3 (width',0,0)
+                  vertex_float3 (width',height'/2,0)
+                  vertex_float3 (0,height'/2,0)
 
-      color $ Color4 0.0 0.0 0.0 (0.5 :: GLfloat)
-
-      renderPrimitive Quads $ do
-          vertex_float3 (0,0,0)
-          vertex_float3 (width',0,0)
-          vertex_float3 (width',-height'/2,0)
-          vertex_float3 (0,-height'/2,0)
-
-      translate $ Vector3 0 (-font_size) (0 :: GLfloat)
-
---      color $ Color4 1.0 1.0 1.0 (1.0 :: GLfloat)
-
-      forM to_render $ \(Item level text) -> do
-        color $ Color4 1.0 1.0 1.0 (0.5 :: GLfloat)
-        draw_text font [text]
---        translate $ Vector3 0 (-font_size) (0 :: GLfloat)
-        return ()
+    forM to_render $ \(Item level text) -> do
+        liftIO $ do color $ Color4 1.0 1.0 1.0 (0.5 :: GLfloat)
+        draw_text font [text] Nothing
+        liftIO $ do translate $ Vector3 0 font_size (0 :: GLfloat)
+                    return ()
 
   return ()

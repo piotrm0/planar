@@ -8,7 +8,8 @@ BIN := $(APP)/Contents/MacOS/planar
 DEP := *.hs Info.plist $(ICON).icns
 
 $(APP) : $(DEP)
-	cabal build -j8 $(DEBUG) -v0
+	cabal build $(DEBUG) -j1 -v0
+#	cabal build $(DEBUG) -j8 -v0
 
 run: $(APP)
 	./dist/build/planar.app/Contents/MacOS/planar

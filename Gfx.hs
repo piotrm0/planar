@@ -1,3 +1,5 @@
+{-# LANGUAGE ScopedTypeVariables #-}
+
 module Gfx (module GfxPP,Gfx.init,finish,loop,draw_text_default,add_log,viewport_default_2d) where
 
 import System.Environment
@@ -36,8 +38,10 @@ import GLLog
 
 import GfxPP
 
-init :: (MonadIO m, Functor m) => cs -> m (cs, GfxState cs m)
+init :: (Monad m, MonadIO m, Functor m) => cs -> m (AllData cs m)
 init client_state = do
+--  let empty_handler = ( \ _ -> (return :: a -> m a) ())
+    
   SDL.initialize [SDL.InitVideo]
   
   old_state <- SDLR.eventState SDLR.SDL_DROPFILE (-1)
@@ -72,17 +76,17 @@ init client_state = do
 
   log <- create 1000
 
-  return (client_state, GfxState {window = window
-                                 ,renderer = renderer
-                                 ,key_handler = \ _ -> return ()
-                                 ,draw_handler = \ _ -> return ()
-                                 ,drop_handler = \ _ -> return ()
-                                 ,frame_timer = framer
-                                 ,glcontext = gl
-                                 ,log = log
-                                 ,window_size = wsize
-                                 ,bg_rot = 0.0
-                                 })
+  return (client_state, GfxData {window = window
+                                ,renderer = renderer
+  --                              ,key_handler  = KeyHandler  ( \ _ -> return () )
+    --                            ,draw_handler = DrawHandler ( \ _ -> return () )
+      --                          ,drop_handler = DropHandler ( \ _ -> return () )
+                                ,frame_timer = framer
+                                ,glcontext = gl
+                                ,log = log
+                                ,window_size = wsize
+                                ,bg_rot = 0.0
+                                })
 
 finish :: MonadIO m => AllStateT cs m ()
 finish = do
@@ -93,7 +97,7 @@ finish = do
     SDL.quit
   return ()
 
-loop :: (Functor m, MonadIO m) => StateT (AllState cs m) m ()
+loop :: (Functor m, MonadIO m) => AllStateT cs m ()
 loop = do
   gfx_renderer <- gets $ renderer . snd
   
@@ -106,9 +110,9 @@ loop = do
   GL.clearColor $= GL.Color4 0.5 0.5 0.5 (1.0 :: GL.GLfloat)
 
   iterateUntil Prelude.id $ do
-    dts <- with_lens gfx_in_allstate $ do
+    dts <- withLensT gfx_in_allstate $ do
       
-      dts <- with_lens frame_timer_in_gfx $ do
+      dts <- withLensT frame_timer_in_gfx $ do
         waittime <- frame_timer_wait
         SDL.delay $ fromIntegral waittime
         dt <- frame_timer_mark
@@ -127,9 +131,9 @@ loop = do
       liftIO $ do
         GL.matrixMode $= GL.Modelview 0
         GL.loadIdentity
-        GL.translate $ GL.Vector3 0 (fromIntegral height) ((-0.5) :: GL.GLfloat)
+--        GL.translate $ GL.Vector3 0 (fromIntegral height) ((-0.5) :: GL.GLfloat)
 
-      with_lens log_in_gfx $ GLLog.render window_dims
+      withLensT log_in_gfx $ GLLog.render window_dims
 
       viewport_center window_dims
 
@@ -151,9 +155,9 @@ loop = do
   liftIO $ putStrLn $ "overall fps=" ++ (show (fps (frame_timer gfx_state)))
   return ()
 
-draw_bg :: (MonadIO m) => GfxStateT cs m ()
+draw_bg :: (MonadIO m, Functor m) => GfxStateT cs m ()
 draw_bg = do
-  rot <- gets bg_rot
+  rot  <- gets bg_rot
   size <- gets window_size
   bg_rot_in_gfx != rot + 0.037
 
@@ -179,17 +183,17 @@ draw_bg = do
         vertex_float3 (-100, 0, x*10)
         vertex_float3 (100, 0, x*10)
 
-window_resize :: (MonadIO m, Integral e) => V2 e -> AllStateT cs m ()
+window_resize :: (MonadIO m, Functor m, Integral e) => V2 e -> AllStateT cs m ()
 window_resize (new_size@(V2 new_width new_height)) = do
   GL.viewport $= (GL.Position 0 0, GL.Size (fromIntegral new_width) (fromIntegral new_height))
-  with_lens gfx_in_allstate $ do
+  withLensT gfx_in_allstate $ do
     window_size_in_gfx != V2 (fromIntegral new_width) (fromIntegral new_height)
     return ()
   
-draw_text_default :: (MonadIO m) => String -> AllStateT cs m ()
-draw_text_default s = do
-  font <- Config.default_font
-  draw_text font [s]
+draw_text_default :: (MonadIO m, Functor m) => String -> AllStateT cs m ()
+draw_text_default s =
+  let font = Config.default_font in do
+  draw_text font [s] Nothing
 
 collect_events_timeout :: (Functor m, MonadIO m) => Float -> m [SDL.Event]
 collect_events_timeout t = do
@@ -209,7 +213,7 @@ process_events = do
   events <- collect_events
   anyM process_event events
 
-process_event :: MonadIO m => SDL.Event -> AllStateT cs m Bool
+process_event :: (Functor m, MonadIO m) => SDL.Event -> AllStateT cs m Bool
 process_event ev = do
   (client_state, gfx_state) <- get
   case SDL.eventPayload ev of
@@ -219,20 +223,35 @@ process_event ev = do
       add_log $ Item Message $ "drop event: " ++ (show s)
       drop_handler gfx_state s
       return False
-    SDL.KeyboardEvent _ SDL.KeyDown _ _ (SDL.Keysym _ KeycodeEscape _) -> return True
-    SDL.KeyboardEvent _ SDL.KeyDown _ _ (SDL.Keysym _ kc _) ->
-      do key_handler gfx_state kc
-         add_log $ Item Message $ "key press event: " ++ (show kc)
+    SDL.KeyboardEvent _ SDL.KeyDown _ _ (SDL.Keysym _ KeycodeEscape _) ->
+      return True
+    SDL.KeyboardEvent _ SDL.KeyDown _ _ thing ->
+      do GfxPP.key_handler gfx_state thing
          return False
-      --(SDL.MouseButtonEvent _ SDL.MouseButtonDown _ _ _ _ _) -> True
+--         add_log $ Item Message $ "key press event: " ++ (show kc)
+--         return False
+--    SDL.KeyboardEvent _ SDL.KeyDown _ _ (SDL.Keysym _ kc _) ->
+--      do GfxPP.key_handler gfx_state kc
+--         add_log $ Item Message $ "key press event: " ++ (show kc)
+--         return False
+--
+--    SDL.KeyboardEvent _ SDL.KeyDown _ _ (SDL.Keysym sc _ _) ->
+--      do GfxPP.key_handler gfx_state sc
+--         add_log $ Item Message $ "key press event: " ++ (show sc)
+--         return False
+
     e@(SDL.WindowResized _ ns) -> do
       window_resize ns
       add_log $ Item Message $ "window resize: " ++ (show e)
       liftIO $ putStrLn $ "window resize: " ++ (show e)
       return False
+    SDL.MouseMotionEvent _ _ _ _ _ -> return False
+    SDL.MouseButtonEvent _ SDL.MouseButtonDown _ _ _ _ _ -> return False
+    SDL.TouchFingerEvent _ _ _ _ _ -> return False
+    SDL.MultiGestureEvent _ _ _ _ _ -> return False
     e -> do
-      --add_log $ Item Message $ "unhandled event: " ++ (show e)
-      --liftIO $ putStrLn $ "unhandled event: " ++ (show e)
+      add_log $ Item Message $ "unhandled event: " ++ (show e)
+      liftIO $ putStrLn $ "unhandled event: " ++ (show e)
       return False
 
 process_events_wait :: (MonadIO m, Functor m) => Float -> AllStateT cs m Bool
@@ -242,7 +261,7 @@ process_events_wait t = do
 
 --get_window_size :: MonadIO m => AllStateT cs m (V2 CInt)
 --get_window_size =
---  with_lens (window_in_gfx . gfx_in_allstate) $ do
+--  withLens (window_in_gfx . gfx_in_allstate) $ do
 --    w <- get
 --    ws <- liftIO $ SDL.getWindowSize w
 --    return ws
@@ -250,12 +269,12 @@ process_events_wait t = do
 setup_viewport :: MonadIO m => AllStateT cs m ()
 setup_viewport = do
   V2 width height <- gets $ window_size . snd
-  with_lens gfx_in_allstate $ do
+  withLensT gfx_in_allstate $ do
     return ()
 
 add_log :: (MonadIO m) => Item -> AllStateT cs m ()
 add_log i =
-  with_lens (log_in_gfx . gfx_in_allstate) $ add i
+  withLensT (log_in_gfx . gfx_in_allstate) $ add i
 
 viewport_default_2d :: (MonadIO m) => AllStateT cs m ()
 viewport_default_2d = do

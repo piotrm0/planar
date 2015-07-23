@@ -34,4 +34,3 @@ data FrameTimer = FrameTimer {target_dt :: Int64
                              ,fps :: Float}
 
 make_lenses_record "frametimer" ''FrameTimer
-
