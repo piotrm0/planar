@@ -8,8 +8,11 @@
 
 module Lens where
 
-import Control.Category
+--import Control.Category
+import Control.Applicative
+import Data.Functor
 import Control.Monad
+import Control.Monad.Identity
 import Control.Monad.IO.Class
 import Control.Monad.State.Strict
 import Language.Haskell.TH
@@ -29,68 +32,77 @@ instance Apply Exp where
 
 type Getter a b = a -> b
 type Putter a b = a -> b -> a
+type Updater a b = (b -> b) -> a -> a
+type UpdaterF a b = Functor f => (b -> f b) -> a -> f a
 
---type Modifier intype fieldtype = (fieldtype -> fieldtype) -> intype -> intype
+--data Lens a b where {Lens :: Getter a b -> Putter a b -> Lens a b}
+type Lens a b = UpdaterF a b
 
---data Lens a b = Lens {getter :: Getter a b
---                     ,putter :: Putter a b}
+ofGetPut :: Getter a b -> Putter a b -> Lens a b
+ofGetPut g p = \ f a -> fmap (p a) (f (g a))
 
-data Lens a b where {Lens :: Getter a b -> Putter a b -> Lens a b}
+updater :: Lens a b -> Updater a b
+updater l = \ f a -> runIdentity $ l ( \ b -> Identity (f b) ) a
 
---of_getput :: Getter a b -> Putter a b -> Lens f a b
---of_getput fget fput = L fget ( \ bmapper -> 
+putter :: Lens a b -> Putter a b
+putter l = \ a b -> updater l (const b) a
 
-compose_lenses :: Lens b c -> Lens a b -> Lens a c
-compose_lenses (Lens get_bc put_bc) (Lens get_ab put_ab)
-  = Lens
-    (\ cont_a -> get_bc (get_ab cont_a))
-    (\ cont_a val_c -> put_ab cont_a $ put_bc (get_ab cont_a) val_c)
+getter :: Lens a b -> Getter a b
+getter l = \ a -> getConst $ l ( \ b -> Const b ) a
 
-instance Category Lens where
-  id = Lens ( \ x -> x)
-            ( \ _ x -> x )
-  (.) = compose_lenses
+compose :: Lens b c -> Lens a b -> Lens a c
+compose l_bc l_ab = l_ab . l_bc
 
-execLens :: Lens a b -> State b () -> State a b
-execLens (Lens getter putter) inner_comp = do
-  outer <- get
-  let inner = getter outer
-  let ((), inner') = runState inner_comp inner
-  return $ inner'
+--compose_lenses :: Lens b c -> Lens a b -> Lens a c
+--compose_lenses (Lens get_bc put_bc) (Lens get_ab put_ab)
+--  = Lens
+--    (\ cont_a -> get_bc (get_ab cont_a))
+--    (\ cont_a val_c -> put_ab cont_a $ put_bc (get_ab cont_a) val_c)
 
-withLens :: Lens a b -> State b r -> State a r
-withLens (Lens getter putter) inner_comp = do
-  outer <- get
-  let inner = getter outer
-  let (ret, inner') = runState inner_comp inner
-  put $ putter outer inner'
-  return ret
+--instance Category Lens where
+--  id = \ f a -> fmap (\ b -> b) (f a)
+--  (.) = compose
+
+--execLens :: Lens a b -> State b () -> State a b
+--execLens (Lens getter putter) inner_comp = do
+--  outer <- get
+--  let inner = getter outer
+--  let ((), inner') = runState inner_comp inner
+--  return $ inner'
+--
+--withLens :: Lens a b -> State b r -> State a r
+--withLens (Lens getter putter) inner_comp = do
+--  outer <- get
+--  let inner = getter outer
+--  let (ret, inner') = runState inner_comp inner
+--  put $ putter outer inner'
+--  return ret
 
 withLensT :: Monad m => Lens a b -> StateT b m r -> StateT a m r
-withLensT (Lens getter putter) inner_comp = do
+withLensT l inner_comp = do
   outer <- get
-  let inner = getter outer
+  let inner = (getter l) outer
   (ret, inner') <- lift $ runStateT inner_comp inner
-  put $ putter outer inner'
+  put $ (putter l) outer inner'
   return ret
   
 --instance Monad (Lens a b) where
 --  return x = put x
 --  (>>=) f c = withLens  
 
-lens_getter (Lens x _) = x
-lens_putter (Lens _ x) = x
+--lens_getter (Lens x _) = x
+--lens_putter (Lens _ x) = x
 
-putLens :: Lens a b -> b -> State a ()
-putLens l field_val =
-  withLens l $ put field_val
+--putLens :: Lens a b -> b -> State a ()
+--putLens l field_val =
+--  withLens l $ put field_val
 
 putLensT :: Monad m => Lens a b -> b -> StateT a m ()
 putLensT l field_val =
   withLensT l $ put field_val
 
-getLens :: Lens a b -> State a b
-getLens l = withLens l $ get
+--getLens :: Lens a b -> State a b
+--getLens l = withLens l $ get
 
 getLensT :: (Monad m) => Lens a b -> StateT a m b
 getLensT l = withLensT l $ get
@@ -103,52 +115,52 @@ infixr 2 !=
 (!=) :: Monad m => Lens a b -> b -> StateT a m ()
 (!=) = putLensT
 
-infixr 2 !~
-(!~) :: Lens a b -> (b -> b) -> State a b
-(!~) l f = do
-  v <- getLens l
-  putLens l (f v)
-  getLens l
+--infixr 2 !~
+--(!~) :: Lens a b -> (b -> b) -> State a b
+--(!~) l f = do
+--  v <- getLens l
+--  putLens l (f v)
+--  getLens l
 
 lensIndex :: Int -> Lens [a] a
-lensIndex i = Lens
+lensIndex i = ofGetPut
               (\ l -> l !! i)
               (\ l e -> let (prefix, rest) = splitAt i l in
                  case rest of
                  [] -> []
                  _ : postfix -> prefix ++ [e] ++ postfix )
 
-make_with :: String -> Name -> Q [Dec]
-make_with field_name lens = do
-  lens_type <- reify lens
-  let lens_cons_name = mkName "Lens.Lens"
-  let VarI _ (ForallT for_alls _ (AppT (AppT (ConT lens_cons_name) in_type) field_type)) _ _ = lens_type
-  let fun_name = mkName $ "with_" ++ field_name  
-  let ret_type = mkName "ret_type"
-  let monad_type = mkName "m"
---  let monadio = mkName "MonadIO"
-  let monadstate = mkName "MonadState"
-  let statet = mkName "StateT"
-  let ctx = [ClassP monadstate ((VarT monad_type) : in_type : [])]
-  let type_declare = SigD fun_name $ ForallT (for_alls ++ [PlainTV monad_type, PlainTV ret_type]) ctx
-                                     (ArrowT #@
-                                      ((ConT statet) #@ field_type #@ (VarT monad_type) #@ (VarT ret_type)) #@
-                                      ((ConT statet) #@ in_type #@ (VarT monad_type) #@ (VarT ret_type)))
-  let def_declare = FunD fun_name [Clause [] (NormalB ((VarE (mkName "withLens")) #@ (VarE lens))) []]
-  return [type_declare,def_declare]
+--make_with :: String -> Name -> Q [Dec]
+--make_with field_name lens = do
+--  lens_type <- reify lens
+--  let lens_cons_name = mkName "Lens.Lens"
+--  let VarI _ (ForallT for_alls _ (AppT (AppT (ConT lens_cons_name) in_type) field_type)) _ _ = lens_type
+--  let fun_name = mkName $ "with_" ++ field_name  
+--  let ret_type = mkName "ret_type"
+--  let monad_type = mkName "m"
+----  let monadio = mkName "MonadIO"
+--  let monadstate = mkName "MonadState"
+--  let statet = mkName "StateT"
+--  let ctx = [ClassP monadstate ((VarT monad_type) : in_type : [])]
+--  let type_declare = SigD fun_name $ ForallT (for_alls ++ [PlainTV monad_type, PlainTV ret_type]) ctx
+--                                     (ArrowT #@
+--                                      ((ConT statet) #@ field_type #@ (VarT monad_type) #@ (VarT ret_type)) #@
+--                                      ((ConT statet) #@ in_type #@ (VarT monad_type) #@ (VarT ret_type)))
+--  let def_declare = FunD fun_name [Clause [] (NormalB ((VarE (mkName "withLens")) #@ (VarE lens))) []]
+--  return [type_declare,def_declare]
 
 make_lenses_tuple :: String -> (String, String) -> Q [Dec]
 make_lenses_tuple postfix (fstname, sndname) = do
-  lens_fst <- [e| Lens fst (\ (_, old_snd) new_fst -> (new_fst, old_snd)) |]
-  lens_snd <- [e| Lens snd (\ (old_fst, _) new_snd -> (old_fst, new_snd)) |]
-  return [ValD
-          (VarP (mkName (fstname ++ "_in_" ++ postfix)))
-          (NormalB lens_fst)
-          []
-         ,ValD
-          (VarP (mkName (sndname ++ "_in_" ++ postfix)))
-          (NormalB lens_snd)
-          []
+  let lens_fst_name = mkName (fstname ++ "_in_" ++ postfix)
+  lens_fst <- [e| \ f (a,b) -> (\ a' -> (a',b)) <$> f a |]
+  lens_fst_sig <- [t| forall a b . Lens (a,b) a |]
+  let lens_snd_name = mkName (sndname ++ "_in_" ++ postfix)
+  lens_snd <- [e| \ f (a,b) -> (\ b' -> (a,b')) <$> f b |]
+  lens_snd_sig <- [t| forall a b . Lens (a,b) b |]
+  return [SigD lens_fst_name lens_fst_sig
+         ,ValD (VarP lens_fst_name) (NormalB lens_fst) []
+         ,SigD lens_snd_name lens_snd_sig
+         ,ValD (VarP lens_snd_name) (NormalB lens_snd) []
          ]
 
 -- When using this, make sure you double quote the data/type name as
@@ -195,7 +207,7 @@ make_lenses_record postfix rec_type_name = do
         let lens_body = ValD
                         (VarP lens_name)
                         (NormalB (AppE (AppE
-                                        (ConE (mkName "Lens"))
+                                        (VarE (mkName "ofGetPut"))
                                         getter_body)
                                   putter_body)) []
 

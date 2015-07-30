@@ -20,6 +20,7 @@ import Foreign.C.String
 import Data.Word
 import Data.Bits
 import Data.Int
+import Data.Functor
 import qualified System.Environment.FindBin
 import qualified System.Directory
 
@@ -69,7 +70,13 @@ type AllData cs m = (cs, GfxData cs m)
 type AllStateT cs m r = StateT (AllData cs m) m r
 type AllState cs r = AllStateT cs I.Identity r
 
-make_lenses_tuple "allstate" ("client", "gfx")
+client_in_allstate :: Lens (a,b) a
+client_in_allstate f (a,b) = (\ a' -> (a',b)) <$> (f a)
+
+gfx_in_allstate :: Lens (a,b) b
+gfx_in_allstate f (a,b) = (\ b' -> (a,b')) <$> (f b)
+
+--make_lenses_tuple "allstate" ("client", "gfx")
 
 --drop_handler_in_gfx :: Lens (GfxData cs) DropHandler
 --drop_handler_in_gfx =

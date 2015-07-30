@@ -274,7 +274,7 @@ setup_viewport = do
 
 add_log :: (MonadIO m) => Item -> AllStateT cs m ()
 add_log i =
-  withLensT (log_in_gfx . gfx_in_allstate) $ add i
+  withLensT (gfx_in_allstate . log_in_gfx) $ add i
 
 viewport_default_2d :: (MonadIO m) => AllStateT cs m ()
 viewport_default_2d = do

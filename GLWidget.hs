@@ -1,11 +1,13 @@
 --{-# LANGUAGE DataKinds #-}
 --{-# LANGUAGE GADTs #-}
 --{-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE StandaloneDeriving #-}
 --{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE UnicodeSyntax #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+--{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 --{-# LANGUAGE FlexibleContexts #-}
 --{-# LANGUAGE RankNTypes #-}
 --{-# LANGUAGE ImpredicativeTypes #-}
@@ -56,13 +58,13 @@ import Lens
 
 import GLWidgetPP
 
-handlerNull :: Monad m => aninput -> alens -> m ()
-handlerNull _ _ = return ()
+--handlerNull :: Monad m => aninput -> alens -> m ()
+--handlerNull _ _ = return ()
 
-basic_create :: Monad m => m (Base s w)
+basic_create :: Monad m => m (Base w)
 basic_create =
-  return $ Base {handler_key    = handlerNull
-                ,handler_change = handlerNull
+  return $ Base {handler_key    = MkKeyHandlerD ( \ _ _ -> return () )
+                ,handler_change = MkTextHandlerD ( \ _ _ -> return () )
                 ,focused        = False
                 ,position       = V2 0 0
                 ,padding        = V2 0 0
@@ -74,7 +76,7 @@ basic_create =
 --  basic_handle_change = ChangeHandler $ return ()
 --  basic_handle_key = KeyHandler $ \ k -> return ()
 
-basic_refit ::  Monad m => StateT (Base s w) m ()
+basic_refit ::  Monad m => StateT (Base w) m ()
 basic_refit = do
   pad   <- getLensT padding_in_base
   pos   <- getLensT position_in_base
@@ -82,7 +84,7 @@ basic_refit = do
   bounds_in_base != (pos, pos + csize + 2*pad)
   size_in_base   != csize + 2 * pad
 
-basic_next_focus :: Monad m => StateT (Base s w) m (Maybe Int)
+basic_next_focus :: Monad m => StateT (Base w) m (Maybe Int)
 basic_next_focus = do
   already <- getLensT focused_in_base
   if already
@@ -94,15 +96,16 @@ basic_next_focus = do
 --widgetPackM :: forall m w . (Monad m, Widget w) => w -> m (GLWidget)
 --widgetPackM p = return $ WidgetPack p
 
-underGLWidget f w = case w of
-  GLText t -> GLText (f t)
-  GLPanel p -> GLPanel (f p)
+--underGLWidget f w = case w of
+--  GLText t -> GLText (f t)
+--  GLPanel p -> GLPanel (f p)
 
-instance Widget GLWidget where
-  widget_handler_key =
-    Lens
-    (underGLWidget widget_handler_key)
-    ( \ w s -> w )
+--instance Widget 
+
+--  widget_handler_key =
+--    Lens
+--    (underGLWidget widget_handler_key)
+--    ( \ w s -> w )
 
 --    ( Lens
 --      ( \ (WidgetPack (w::a)) -> (lens_getter basic_handler_key) w )
@@ -161,10 +164,10 @@ instance Widget Text where
 --  basic_handler_key    = handler_key_in_base    . text_base_in_text
 --  basic_handler_change = handler_change_in_base . text_base_in_text
   
-  widget_position     = position_in_base     . text_base_in_text
-  widget_size         = size_in_base         . text_base_in_text
-  widget_content_size = content_size_in_base . text_base_in_text
-  widget_bounds       = bounds_in_base       . text_base_in_text
+  widget_position     = text_base_in_text . position_in_base
+  widget_size         = text_base_in_text . size_in_base          
+  widget_content_size = text_base_in_text . content_size_in_base  
+  widget_bounds       = text_base_in_text . bounds_in_base        
 
   widget_handle_key k w = withLensT w $ do
     case k of
@@ -183,11 +186,11 @@ instance Widget Text where
         write_cursor (chr (fromIntegral akey))
 
   widget_next_focus = do
-    already <- getLensT (focused_in_base . text_base_in_text)
+    already <- getLensT (text_base_in_text . focused_in_base)
     if already
-      then do focused_in_base . text_base_in_text != False
+      then do text_base_in_text . focused_in_base != False
               return Nothing
-      else do focused_in_base . text_base_in_text != True
+      else do text_base_in_text . focused_in_base != True
               return $ Just 0
 
   widget_create =
@@ -211,7 +214,7 @@ instance Widget Text where
                   return (max max_width width, total_height + height) ) (0,font_ascend) pieces
 
     text_content_in_text != pieces
-    content_size_in_base . text_base_in_text
+    text_base_in_text . content_size_in_base
       != V2 (realToFrac max_width) (realToFrac (total_height - height - font_descend))
 
     withLensT text_base_in_text basic_refit
@@ -219,18 +222,18 @@ instance Widget Text where
   widget_render = do
     p <- get
     font <- gets text_font
-    pad <- getLensT (padding_in_base . text_base_in_text)
+    pad <- getLensT (text_base_in_text . padding_in_base)
 
     let font_size = FTGL.fgetFontLineHeight font
 
     content <- gets text_content
     
-    apos  <- getLensT (position_in_base . text_base_in_text)
-    asize <- getLensT (size_in_base     . text_base_in_text)
-    csize <- getLensT (content_size_in_base . text_base_in_text)
+    apos  <- getLensT (text_base_in_text . position_in_base)
+    asize <- getLensT (text_base_in_text . size_in_base)
+    csize <- getLensT (text_base_in_text . content_size_in_base)
     c     <- getLensT text_cursor_in_text
 
-    is_focused <- getLensT (focused_in_base . text_base_in_text)
+    is_focused <- getLensT (text_base_in_text . focused_in_base)
 
     liftIO $ do matrixMode $= Modelview 0
     preservedMatrix $ do
@@ -269,7 +272,7 @@ instance Widget Text where
 --                     else (x',y')) in
 --  V2 x'' y''
 
-offset_cursor :: Monad m => V2 Int -> StateT (Text s) m ()
+offset_cursor :: Monad m => V2 Int -> StateT Text m ()
 offset_cursor coff = do
   c_current <- gets text_cursor
 --  liftIO $ putStrLn $ "offsetting cursor: " ++ (show c_current) ++ " by " ++ (show coff)
@@ -293,7 +296,7 @@ offset_cursor coff = do
   text_cursor_in_text != c_next
   withLensT text_base_in_text basic_refit
 
-write_cursor :: Monad m => Char -> StateT (Text s) m ()
+write_cursor :: Monad m => Char -> StateT Text m ()
 write_cursor c = do
   V2 x y <- gets text_cursor
   text_cursor_in_text != V2 (x+1) y
@@ -305,7 +308,7 @@ write_cursor c = do
 
   withLensT text_base_in_text basic_refit
 
-backspace_cursor :: Monad m => StateT (Text s) m ()
+backspace_cursor :: Monad m => StateT Text m ()
 backspace_cursor = do
   V2 x y <- gets text_cursor
   lines <- gets text_content
@@ -332,7 +335,7 @@ backspace_cursor = do
                 (before_chars, cchar : after_chars) -> before_chars ++ after_chars
           put $ temp
 
-linebreak_cursor :: Monad m => StateT (Text s) m ()
+linebreak_cursor :: Monad m => StateT Text m ()
 linebreak_cursor = do
   V2 x y <- gets text_cursor
   withLensT text_content_in_text $ do
@@ -342,46 +345,49 @@ linebreak_cursor = do
       put [line1 ++ "\n",line2]
   text_cursor_in_text != V2 0 (y+1)
 
-cursor = text_cursor_in_text
+--cursor = text_cursor_in_text
 
-set_content :: Monad m => String -> StateT (Text s) m ()
+set_content :: Monad m => String -> StateT Text m ()
 set_content s = do
   text_content_in_text != (map (++ "\n") $ splitOn "\n" s)
   withLensT text_base_in_text basic_refit
 
-add_element :: Monad m => GLWidget s -> StateT (Panel s) m ()
+add_element :: (Monad m) => GLWidget -> StateT Panel m ()
 add_element e = do
   old <- gets panel_content
   panel_content_in_panel != old ++ [e]
 
-inc_focus :: Monad m => StateT (Panel s) m (Maybe Int)
+inc_focus :: Monad m => StateT Panel m (Maybe Int)
 inc_focus = do
-  focused_in_base . panel_base_in_panel != True
+  panel_base_in_panel . focused_in_base != True
   findex <- getLensT panel_focus_index_in_panel
   pieces <- getLensT panel_content_in_panel
   let num_pieces = length pieces
   got_subnext <- withLensT panel_content_in_panel $ do
     withIndexT findex $ do
+--      GLWidget w <- get
+--      (ret, new_w) <- (flip runStateT) w $ do
       temp_findex <- widget_next_focus
       case temp_findex of
         Nothing -> return False
         Just _ -> return True
+--      return ret
   if got_subnext
     then return $ Just findex
     else if findex >= num_pieces - 1
-         then do focused_in_base . panel_base_in_panel != False
+         then do panel_base_in_panel . focused_in_base != False
                  panel_focus_index_in_panel != 0
                  return Nothing
          else do panel_focus_index_in_panel != findex + 1
                  inc_focus
 
 instance Widget Panel where
-  widget_handler_key    = handler_key_in_base    . panel_base_in_panel
-  widget_handler_change = handler_change_in_base . panel_base_in_panel
-  widget_position     = position_in_base     . panel_base_in_panel
-  widget_size         = size_in_base         . panel_base_in_panel
-  widget_content_size = content_size_in_base . panel_base_in_panel
-  widget_bounds       = bounds_in_base       . panel_base_in_panel
+  widget_handler_key    = panel_base_in_panel . handler_key_in_base
+  widget_handler_change = panel_base_in_panel . handler_change_in_base
+  widget_position       = panel_base_in_panel . position_in_base 
+  widget_size           = panel_base_in_panel . size_in_base
+  widget_content_size   = panel_base_in_panel . content_size_in_base
+  widget_bounds         = panel_base_in_panel . bounds_in_base
   
   widget_next_focus = inc_focus
 
@@ -390,8 +396,8 @@ instance Widget Panel where
     findex <- withLensT w $ gets panel_focus_index
     cs     <- withLensT w $ getLensT panel_content_in_panel
     if findex < length cs
-      then do let lens_index = (lensIndex findex) . panel_content_in_panel . w
-              widget_handle_key k lens_index
+      then --do let lens_index = w . panel_content_in_panel . (lensIndex findex)
+      widget_handle_key k (w . panel_content_in_panel . (lensIndex findex))
       else return ()
 
   widget_create = do
@@ -408,7 +414,7 @@ instance Widget Panel where
     asize <- getLensT $ widget_size
     csize <- getLensT $ widget_content_size
 
-    pad <- getLensT (padding_in_base . panel_base_in_panel)
+    pad <- getLensT (panel_base_in_panel . padding_in_base)
 
     preservedMatrix $ do
       liftIO $ do
@@ -431,7 +437,7 @@ instance Widget Panel where
       put new_content
       return ()
 
-    pad <- getLensT $ padding_in_base . panel_base_in_panel
+    pad <- getLensT $ panel_base_in_panel . padding_in_base
     arr <- gets panel_arrange
 
     let scale = case arr of
@@ -464,3 +470,52 @@ instance Widget Panel where
     widget_bounds       != (final_min - pad, final_max + pad)
 
     return ()
+
+
+--withWidgetLens l =
+--  Lens
+--  ( \ (GLWidget w) -> (lens_getter l) w )
+--  ( \ (GLWidget w) p -> GLWidget ((lens_putter l) w p) )
+
+instance Widget GLWidget where
+  widget_refit = $(makeInWidget 'widget_refit)
+
+--  widget_position = $(makeInWidgetLens 'widget_position)
+--  widget_size     = $(makeInWidgetLens 'widget_size)
+--  widget_content_size   = $(makeInWidgetLens 'widget_content_size)
+--  widget_bounds         = $(makeInWidgetLens 'widget_bounds)
+
+--  widget_handler_key =
+--     Lens (\ glw -> case glw of
+--                         GLText  w -> let h = (lens_getter widget_handler_key) w in
+--                                              $(makeInHandler 'h 'GLText ''KeyInput)
+--                         GLPanel w -> let h = (lens_getter widget_handler_key) w in
+--                                              $(makeInHandler 'h 'GLPanel ''KeyInput) )
+--          (\ glw h -> glw )
+                            
+--                            case glw of
+--                           GLText  w -> GLText  ((lens_putter widget_handler_key) w $(makeOutHandler 'h ''Text) )
+--                           GLPanel w -> GLPanel ((lens_putter widget_handler_key) w $(makeOutHandler 'h ''Panel) )
+--          )
+
+--  widget_handler_key =
+--     Lens (\ (GLWidget w) -> ( \ e l -> (lens_getter widget_handler_key w) e $(makeOutWidgetLens 'l) ) )
+--          (\ (GLWidget w) h -> GLWidget w)
+                            
+--  widget_handler_key    = $(makeInWidgetLens 'widget_handler_key)
+--  widget_handler_change = $(makeInWidgetLens 'widget_handler_change)
+                 
+--  widget_position = Lens
+--                   ( \ (GLWidget w) -> (lens_getter widget_position) w )
+--                   ( \ (GLWidget w) p -> GLWidget ((lens_putter widget_position) w p) )
+                   
+                   
+--do
+--    GLWidget w <- get
+--    runStateT widget_refit w
+--    return ()
+
+--
+--  widget_position = widget_position . (Lens
+--                                       (\ (GLWidget w) -> w)
+--                                       (\ (GLWidget w) w' -> GLWidget w'))

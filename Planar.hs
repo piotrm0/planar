@@ -56,7 +56,7 @@ import Data.StateVar(($=))
 main :: IO ()
 main =
   widget_create >>= ( execStateT $ do
-                          position_in_base . panel_base_in_panel != V2 0 0 )
+                          panel_base_in_panel . position_in_base != V2 0 0 )
   >>= \ p -> ( G.init (ClientData {rot = 0.0
                                   ,panel = p}) )
              >>= ( evalStateT $ do
@@ -72,19 +72,19 @@ handle_drop :: (MonadIO m, Functor m) => String -> AllStateT m ()
 handle_drop s = let font = Config.default_font in
   (liftIO $ read_file s)
   >>= \ (content, maybe_exprs) ->
-  withLensT (panel_in_client . G.client_in_allstate)
+  withLensT (G.client_in_allstate . panel_in_client)
   ( panel_wrap_focus_in_panel != True
     >> panel_arrange_in_panel    != Horizontal
-    >> focused_in_base . panel_base_in_panel != True
-    >> padding_in_base . panel_base_in_panel != 5
+    >> panel_base_in_panel . focused_in_base != True
+    >> panel_base_in_panel . padding_in_base != 5
 
-    >> ( widget_create >>= execStateT ( padding_in_base . text_base_in_text != 5
+    >> ( widget_create >>= execStateT ( text_base_in_text . padding_in_base != 5
                                         >> set_content content ) )
-    >>= ( \ e -> add_element (GLText e) )
+    >>= ( \ e -> add_element (GLWidget e) )
 
-    >> ( widget_create >>= execStateT ( padding_in_base . text_base_in_text != 5
+    >> ( widget_create >>= execStateT ( text_base_in_text . padding_in_base != 5
                                         >> set_content content ) )
-    >>= ( \ e -> add_element (GLText e ) )
+    >>= ( \ e -> add_element (GLWidget e ) )
   
     >> case maybe_exprs of
     Nothing -> return ()
@@ -92,34 +92,34 @@ handle_drop s = let font = Config.default_font in
       ( widget_create >>= execStateT
         ( panel_arrange_in_panel != Vertical
           >> forM_ exprs (\ e ->let pretty_text = Pretty.render (pretty e) in
-                            ( widget_create >>= execStateT ( padding_in_base . text_base_in_text != 5
+                            ( widget_create >>= execStateT ( text_base_in_text . padding_in_base != 5
                                                              >> set_content pretty_text ) )
-                            >>= \ e -> add_element (GLText e) ) )
-        >>= ( \e -> add_element (GLPanel e) ) )
+                            >>= \ e -> add_element (GLWidget e) ) )
+        >>= ( \e -> add_element (GLWidget e) ) )
 
       >> liftIO ( llvm_of_exprs exprs >>= JIT.getAssembly )
       >>= \ (llvm_raw, llvm_opt) ->
       widget_create >>= ( execStateT $
-                          padding_in_base . text_base_in_text != 5 
+                          text_base_in_text . padding_in_base != 5 
                           >> set_content llvm_raw )
-      >>= ( \ e -> add_element (GLText e) )
+      >>= ( \ e -> add_element (GLWidget e) )
       >> widget_create >>= ( execStateT $
-                             padding_in_base . text_base_in_text != 5
+                             text_base_in_text . padding_in_base != 5
                              >> set_content llvm_opt )
-      >>= ( \ e -> add_element (GLText e) )
+      >>= ( \ e -> add_element (GLWidget e) )
 
     >> widget_refit )
 
 planar_handle_key :: Monad m => Keysym -> AllStateT m ()
 planar_handle_key kc =
-  let wlens = panel_in_client . G.client_in_allstate in
+--  let wlens = G.client_in_allstate . panel_in_client in
 --  withLensT (panel_in_client . G.client_in_allstate) $ do
   case kc of
   Keysym {keysymKeycode = kk} ->
-    case kk of KeycodeTab -> withLensT wlens $ widget_next_focus >> return ()
-               kc -> widget_handle_key (Left kc) wlens
+    case kk of KeycodeTab -> withLensT (G.client_in_allstate . panel_in_client) $ widget_next_focus >> return ()
+               kc -> widget_handle_key (Left kc) (G.client_in_allstate . panel_in_client)
   Keysym {keysymScancode = sc} ->
-    widget_handle_key (Right sc) wlens
+    widget_handle_key (Right sc) (G.client_in_allstate . panel_in_client)
 
 --      _ -> do
 --        liftIO $ putStrLn ("planar_handle_key: unhandled key event: " ++ (show kc))
@@ -127,8 +127,8 @@ planar_handle_key kc =
 
 handle_draw :: (MonadIO m, Functor m) => Float -> AllStateT m ()
 handle_draw dt = do
-  mindt <- withLensT (GU.min_dt_in_frametimer . G.frame_timer_in_gfx . G.gfx_in_allstate) $ Stream.query
-  fps   <- getLensT  (GU.fps_in_frametimer    . G.frame_timer_in_gfx . G.gfx_in_allstate)
+  mindt <- withLensT (G.gfx_in_allstate . G.frame_timer_in_gfx . GU.min_dt_in_frametimer) $ Stream.query
+  fps   <- getLensT  (G.gfx_in_allstate . G.frame_timer_in_gfx . GU.fps_in_frametimer)
 
   p <- gets $ panel . fst
 

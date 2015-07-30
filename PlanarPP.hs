@@ -43,6 +43,6 @@ type AllState r    = AllStateT I.Identity r
 data ClientData m =
   ClientData {rot :: GL.GLfloat
              ,nothing :: m Int
-             ,panel :: GLW.Panel (AllData m)}
+             ,panel :: GLW.Panel}
 
 make_lenses_record "client" ''ClientData
